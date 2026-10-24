@@ -1,0 +1,7 @@
+{
+  "name": "pipes-slides",
+  "private": true,
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  }
+}
