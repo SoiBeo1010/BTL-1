@@ -9,9 +9,10 @@ pipes_project/
 ├── puzzle.py        # Mô hình trạng thái, successor, goal test và heuristic
 ├── search.py        # Greedy Best-First Search
 |-- generator.py     # Procedural random solvable layouts
-├── main.py          # Giao diện Pygame và hoạt ảnh lời giải
+├── main.py          # Giao diện Pygame, xem từng bước tìm kiếm và lời giải
 ├── benchmark.py     # Đo thời gian/bộ nhớ của Greedy trên 4 puzzle
 ├── puzzles/         # Puzzle mẫu 3x3 đến 6x6
+├── tests/           # Kiểm tra bản ghi tìm kiếm và điều khiển UI
 └── requirements.txt
 ```
 
@@ -38,18 +39,35 @@ python benchmark.py
 | `N` | Tao layout ngau nhien va seed moi cho puzzle dang chon |
 | `M` | Chuyển Dense / Sparse: nhiều nhánh-vòng hoặc mạng thưa dạng cây |
 | `T` | Toggle Midnight / Aurora palette |
-| `G` | Chạy Greedy Best-First Search và tự động phát lời giải |
-| `S` | Chạy một bước; nếu chưa tìm kiếm thì bắt đầu tìm lời giải |
-| `Space` | Tạm dừng / tiếp tục hoạt ảnh |
+| `G` | Chạy Greedy, ghi quá trình tìm kiếm và mở bản ghi ở bước đầu, tạm dừng |
+| `S` / `→` | Xem bước tiếp theo; nếu chưa tìm kiếm thì bắt đầu chạy AI |
+| `←` | Quay lại bước trước |
+| `Home` / `End` | Về đầu / cuối bản ghi đang xem |
+| `Space` | Phát / tạm dừng; phát lại từ đầu khi đang ở bước cuối |
+| `Tab` | Đổi giữa quá trình tìm kiếm và đường đi lời giải (khi có lời giải) |
 | `R` | Đặt lại puzzle |
-| `C` | Cancel the current solution animation |
-| Click ô | Xoay ống 90 độ |
+| `C` | Hủy tìm kiếm hoặc dừng phát; giữ các bước đã ghi để xem lại |
+| Click ô | Xoay ống 90 độ khi chơi thủ công; nhấn `R` để về chơi sau khi xem AI |
 | `Esc` / `Q` | Thoát |
 
-Trong giao diện, phần xanh là đầu nối khớp, còn đỏ là đầu nối chưa khớp. Bảng điều khiển bên phải hiển thị `h(n)`, số mismatch, số node đã mở rộng, frontier lớn nhất, thời gian và số bước.
+Trong giao diện, phần xanh là đầu nối khớp, còn đỏ là đầu nối chưa khớp. Viền vàng đánh dấu ô vừa được xoay. Các hàng/cột được đánh số từ 1 để đối chiếu với bảng phép xoay.
 
-During `G`, Greedy runs in a background worker. The expanded, generated, frontier and elapsed-time counters update live while the search is running.
-The `FRONTIER MAX` display counts smoothly, then follows the solution animation so it reaches the recorded maximum on the final pipe rotation. Its counting rate adapts to the remaining steps and pauses with the animation; large values can advance by multiple units per frame. If no rotation is needed or no solution is found, the final maximum is shown immediately.
+## Xem AI giải từng bước
+
+Nhấn **Chạy AI** (`G`), sau đó dùng **Lùi / Tiến**, **Phát**, hoặc kéo thanh tiến trình. Nút tốc độ chuyển giữa `0.5x`, `1x`, `2x` và `5x`. Chọn tab để xem:
+
+- **Quá trình tìm kiếm**: mỗi bản ghi tương ứng một trạng thái thực sự được lấy khỏi hàng đợi. UI hiển thị node, trạng thái cha, phép xoay từ cha, độ sâu, cách tính `h(n)`, các nhánh mới/trùng và 5 node ưu tiên tiếp theo. Cuộn trong bảng phép xoay để xem hết các nhánh; bảng xếp theo `h(n)`. `Δh` là điểm của nhánh con trừ điểm của node đang xét. Greedy ưu tiên `h(n)` nhỏ nhất, sau đó độ sâu nhỏ hơn và thứ tự thêm vào hàng đợi.
+- **Đường đi lời giải**: các phép xoay được truy ngược từ đích về trạng thái ban đầu. Click một dòng để đến bước đó. Đây là đường đi AI tìm được, có thể bỏ qua nhiều nhánh đã xét trong quá trình tìm kiếm.
+
+Khi hai node được mở rộng liên tiếp thuộc hai nhánh khác nhau, viền vàng vẫn thể hiện phép xoay từ **cha thực sự** của node đang xem. Các chỉ số “Tại bước này” lấy từ bản ghi tương ứng; dòng “Tổng” là kết quả của toàn bộ lần chạy, không nội suy theo hoạt ảnh.
+
+Greedy chạy trong luồng nền nên có thể xem bản ghi ngay khi tìm kiếm còn chạy. Để giới hạn bộ nhớ, UI lưu tối đa **2.000 lượt mở rộng đầu tiên và trạng thái đích nếu tìm thấy sau đó**; giao diện thông báo khi vượt giới hạn này. Việc tìm kiếm vẫn tiếp tục và đường đi lời giải giữ đầy đủ các phép xoay. Benchmark không bật ghi bản truy vết.
+
+Chạy kiểm tra tự động (bao gồm UI với màn hình giả lập):
+
+```powershell
+python -B -m unittest discover -s tests -v
+```
 
 ## Random puzzles
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import random
 import sys
 import threading
@@ -16,18 +17,20 @@ sys.path.insert(0, BASE_DIR)
 
 from generator import make_random_puzzle
 from puzzle import PipesPuzzle
-from search import SearchResult, greedy_best_first
+from search import SearchResult, SearchTraceStep, greedy_best_first
 
-BOARD_W = 760
+BOARD_W = 560
 HEADER_H = 164
 BOARD_MARGIN = 24
 CARD_H = 605
-PANEL_W = 328
-GAP = 26
+PANEL_W = 552
+GAP = 18
 FPS = 60
 MAX_NODES = 500_000
-GRID_AREA_TOP = 82
-GRID_AREA_BOTTOM = 72
+MAX_TRACE_STEPS = 2_000
+PLAYBACK_DELAYS = (1.6, 0.8, 0.4, 0.16)
+GRID_AREA_TOP = 112
+GRID_AREA_BOTTOM = 56
 MIN_CELL = 64
 MAX_CELL = 110
 
@@ -147,13 +150,22 @@ class App:
         self.search_cancel_requested = False
         self.search_token = 0
         self.search_started_at = 0.0
+        self.pending_traces: queue.SimpleQueue[tuple[int, SearchTraceStep]] = queue.SimpleQueue()
+        self.trace_steps: list[SearchTraceStep] = []
+        self.trace_index = 0
+        self.view_mode = "trace"
+        self.candidate_scroll = 0
+        self.candidate_rect = pygame.Rect(0, 0, 0, 0)
+        self.timeline_rect = pygame.Rect(0, 0, 0, 0)
+        self.timeline_dragging = False
+        self.inspector_buttons: dict[str, pygame.Rect] = {}
+        self.speed_index = 1
+        self.search_start_state = self.state
         self.live_stats = {"expanded": 0, "generated": 1, "frontier": 1, "max_frontier": 1}
-        self.displayed_max_frontier = 0
-        self.frontier_animation_start = 0
         self.solved = self.puzzle.is_goal(self.state)
         self.status = "SOLVED" if self.solved else "READY"
         self.status_detail = "T\u1ef1 xoay c\u00e1c \u00f4 ho\u1eb7c nh\u1ea5n G \u0111\u1ec3 Greedy t\u00ecm l\u1eddi gi\u1ea3i."
-        self.auto_delay = 0.13
+        self.auto_delay = PLAYBACK_DELAYS[self.speed_index]
         self.last_step_time = time.perf_counter()
 
         self.puzzle_buttons: dict[str, pygame.Rect] = {}
@@ -204,23 +216,18 @@ class App:
     def _invalidate_search(self) -> None:
         """Stop a running worker and invalidate any result it may return."""
         self.search_token += 1
-        self.displayed_max_frontier = 0
         self.search_cancel_requested = True
         self.search_computing = False
         self.search_pending_result = None
         self.search_running = False
         self.search_paused = False
+        self._clear_search()
 
     def reset(self) -> None:
         """Reset the current generated layout without changing its seed."""
         self._invalidate_search()
         self.state = self.puzzle.initial_state()
         self.previous_state = None
-        self.search_result = None
-        self.search_path = []
-        self.search_step = 0
-        self.search_running = False
-        self.search_paused = False
         self.solved = self.puzzle.is_goal(self.state)
         self.status = "SOLVED" if self.solved else "READY"
         self.status_detail = "T\u1ef1 xoay c\u00e1c \u00f4 ho\u1eb7c nh\u1ea5n G \u0111\u1ec3 Greedy t\u00ecm l\u1eddi gi\u1ea3i."
@@ -239,11 +246,6 @@ class App:
         )
         self.state = self.puzzle.initial_state()
         self.previous_state = None
-        self.search_result = None
-        self.search_path = []
-        self.search_step = 0
-        self.search_running = False
-        self.search_paused = False
         self.solved = self.puzzle.is_goal(self.state)
         self.status = "READY"
         self.status_detail = "B\u00e0i to\u00e1n m\u1edbi \u0111\u00e3 s\u1eb5n s\u00e0ng \u0111\u1ec3 kh\u00e1m ph\u00e1."
@@ -266,31 +268,28 @@ class App:
 
     def _clear_search(self) -> None:
         self.search_result = None
-        self.displayed_max_frontier = 0
         self.search_path = []
         self.search_step = 0
         self.search_running = False
         self.search_paused = False
+        self.trace_steps = []
+        self.trace_index = 0
+        self.candidate_scroll = 0
+        self.view_mode = "trace"
+        self.timeline_dragging = False
 
     def cancel_search(self) -> None:
+        if not (self.search_computing or self.search_running):
+            return
         if self.search_computing:
             self.search_cancel_requested = True
-            self.search_running = False
-            self.search_path = []
-            self.search_step = 0
-            self.status = "CANCELLED"
-            self.status_detail = "\u0110\u00e3 h\u1ee7y search hi\u1ec7n t\u1ea1i."
-            return
-        if self.search_running or self.search_path:
-            self.search_running = False
-            self.search_paused = False
-            self.search_path = []
-            self.search_step = 0
-            self.status = "CANCELLED"
-            self.status_detail = "\u0110\u00e3 h\u1ee7y ho\u1ea1t \u1ea3nh l\u1eddi gi\u1ea3i hi\u1ec7n t\u1ea1i."
+        self.search_running = False
+        self.search_paused = True
+        self.status = "CANCELLED"
+        self.status_detail = "Đã dừng. Bạn vẫn có thể xem lại các bước đã ghi."
 
     def on_board_click(self, position: tuple[int, int]) -> None:
-        if self.search_running or self.search_computing:
+        if self.search_running or self.search_computing or self.trace_steps or self.search_path:
             return
         x, y = position
         col = (x - self.grid_left) // self.cell_size
@@ -329,41 +328,40 @@ class App:
                 token, state, expanded, generated, frontier
             ),
             cancel_check=lambda: token != self.search_token or self.search_cancel_requested,
+            trace_callback=lambda step: self.pending_traces.put((token, step)),
+            trace_limit=MAX_TRACE_STEPS,
         )
         if token == self.search_token:
             self.search_pending_result = result
 
     def _finish_search(self, result: SearchResult) -> None:
         self.search_result = result
-        self.frontier_animation_start = self.displayed_max_frontier
         self.search_path = result.path
         self.search_step = 0
-        self.last_step_time = time.perf_counter()
         self.search_cancel_requested = False
-        if result.found and result.path:
-            self.search_running = len(result.path) > 1
-            self.solved = len(result.path) == 1
-            self.status = "SOLVED" if self.solved else "SOLUTION READY"
-            self.status_detail = f"\u0110\u00e3 t\u00ecm th\u1ea5y l\u1eddi gi\u1ea3i v\u1edbi {result.depth} l\u1ea7n xoay."
+        if result.found:
+            self.status = "REVIEW"
+            self.status_detail = f"Đã tìm thấy lời giải: {result.depth} lần xoay. Xem từng bước AI bên dưới."
+        elif result.termination_reason == "cancelled":
+            self.status = "CANCELLED"
+            self.status_detail = "Đã hủy tìm kiếm. Các bước đã ghi vẫn có thể xem lại."
         else:
-            self.search_running = False
             self.status = "NO SOLUTION"
-            self.status_detail = f"D\u1eebng sau {result.nodes_generated:,} tr\u1ea1ng th\u00e1i \u0111\u01b0\u1ee3c t\u1ea1o."
-        if not self.search_running:
-            self.displayed_max_frontier = result.max_frontier
+            reason = "Đã chạm giới hạn số trạng thái" if result.termination_reason == "node_limit" else "Đã xét hết hàng đợi"
+            self.status_detail = f"{reason}; chưa tìm thấy lời giải."
 
     def run_greedy(self) -> None:
-        if self.search_running or self.search_computing:
+        if self.search_computing or (self.search_worker is not None and self.search_worker.is_alive()):
             return
-        if self.search_worker is not None and self.search_worker.is_alive():
-            return
+        start_state = self.search_start_state if self.trace_steps or self.search_path else self.state
+        self._clear_search()
+        self.state = start_state
+        self.previous_state = None
+        self.search_start_state = start_state
         self.status = "SEARCHING"
-        self.status_detail = "Greedy dang mo rong trang thai co h(n) thap nhat..."
+        self.status_detail = "Đang ghi các bước chọn trạng thái, sinh nhánh và cập nhật hàng đợi."
         self.solved = False
-        self.search_result = None
-        self.search_path = []
-        self.search_step = 0
-        self.search_paused = False
+        self.search_paused = True
         self.search_cancel_requested = False
         self.search_pending_result = None
         self.search_token += 1
@@ -371,94 +369,125 @@ class App:
         self.search_computing = True
         self.search_started_at = time.perf_counter()
         self.live_stats = {"expanded": 0, "generated": 1, "frontier": 1, "max_frontier": 1}
-        self.displayed_max_frontier = 0
-        self.draw()
-        pygame.display.flip()
-        pygame.event.pump()
-
         working_puzzle = PipesPuzzle(
-            self.puzzle.rows,
-            self.puzzle.cols,
-            self.puzzle.cells,
+            self.puzzle.rows, self.puzzle.cols, self.puzzle.cells,
             root_index=self.puzzle.root_index,
         )
         self.search_worker = threading.Thread(
             target=self._search_worker,
-            args=(token, working_puzzle, self.state),
-            name="greedy-search",
-            daemon=True,
+            args=(token, working_puzzle, start_state),
+            name="greedy-search", daemon=True,
         )
         self.search_worker.start()
 
-    def step_search(self) -> None:
-        if not self.search_path:
-            self.run_greedy()
+    @property
+    def playback_length(self) -> int:
+        return len(self.trace_steps) if self.view_mode == "trace" else len(self.search_path)
+
+    @property
+    def playback_index(self) -> int:
+        return self.trace_index if self.view_mode == "trace" else self.search_step
+
+    @property
+    def current_trace(self) -> Optional[SearchTraceStep]:
+        return self.trace_steps[self.trace_index] if self.trace_steps else None
+
+    def select_step(self, index: int, pause: bool = True) -> None:
+        if not self.playback_length:
             return
-        if self.search_step >= len(self.search_path) - 1:
+        index = max(0, min(index, self.playback_length - 1))
+        if pause:
             self.search_running = False
-            self.solved = self.puzzle.is_goal(self.state)
-            return
-        self.previous_state = self.state
-        self.search_step += 1
-        self.state = self.search_path[self.search_step]
-        self.last_step_time = time.perf_counter()
-        if self.search_step >= len(self.search_path) - 1:
-            self.search_running = False
-            self.solved = self.puzzle.is_goal(self.state)
-            self.status = "SOLVED" if self.solved else "READY"
-            self.status_detail = "\u0110\u00e3 \u00e1p d\u1ee5ng l\u1eddi gi\u1ea3i. Nh\u1ea5n R ho\u1eb7c N \u0111\u1ec3 ch\u01a1i l\u1ea1i."
+            self.search_paused = True
+        if self.view_mode == "trace":
+            self.trace_index = index
+            step = self.trace_steps[index]
+            # Consecutive expanded nodes can belong to different search branches.
+            # Highlight the move from this node's actual parent instead.
+            self.previous_state = step.parent_state
+            self.state = step.state
         else:
-            self.status = "ANIMATING"
-            self.status_detail = f"\u0110ang \u00e1p d\u1ee5ng l\u1ea7n xoay {self.search_step}/{len(self.search_path) - 1}."
+            self.search_step = index
+            self.previous_state = self.search_path[index - 1] if index else None
+            self.state = self.search_path[index]
+        self.candidate_scroll = 0
+        self.solved = self.puzzle.is_goal(self.state)
+        self.last_step_time = time.perf_counter()
+
+    def set_view(self, mode: str) -> None:
+        if mode == "solution" and not self.search_path:
+            return
+        self.view_mode = mode
+        self.select_step(self.playback_index)
+
+    def step_search(self, direction: int = 1) -> None:
+        if not self.playback_length:
+            if not self.search_computing:
+                self.run_greedy()
+            return
+        self.select_step(self.playback_index + direction)
 
     def toggle_pause(self) -> None:
-        if not self.search_path or self.solved:
+        if not self.playback_length:
             return
-        self.search_paused = not self.search_paused
-        self.status = "PAUSED" if self.search_paused else "ANIMATING"
-        self.status_detail = "Nh\u1ea5n SPACE \u0111\u1ec3 ti\u1ebfp t\u1ee5c." if self.search_paused else "\u0110ang \u00e1p d\u1ee5ng \u0111\u01b0\u1eddng \u0111i c\u1ee7a Greedy."
+        if self.search_running:
+            self.search_running = False
+            self.search_paused = True
+        else:
+            if self.playback_index == self.playback_length - 1:
+                self.select_step(0)
+            self.search_running = True
+            self.search_paused = False
         self.last_step_time = time.perf_counter()
 
+    def cycle_speed(self) -> None:
+        self.speed_index = (self.speed_index + 1) % len(PLAYBACK_DELAYS)
+        self.auto_delay = PLAYBACK_DELAYS[self.speed_index]
+        self.last_step_time = time.perf_counter()
+
+    def seek_timeline(self, x: int) -> None:
+        if self.playback_length:
+            fraction = max(0.0, min(1.0, (x - self.timeline_rect.x) / self.timeline_rect.width))
+            self.select_step(round(fraction * (self.playback_length - 1)))
+
     def update(self) -> None:
-        if self.search_computing:
-            # Reserve the last unit for the final solution step.
-            frontier_target = max(0, self.live_stats["max_frontier"] - 1)
-            if not self.search_cancel_requested:
-                self.displayed_max_frontier = min(frontier_target, self.displayed_max_frontier + 1)
-            if self.search_pending_result is not None:
-                result = self.search_pending_result
-                self.search_pending_result = None
-                self.search_computing = False
-                self.search_worker = None
-                if not self.search_cancel_requested:
-                    self._finish_search(result)
-                else:
-                    self.displayed_max_frontier = 0
-            elif self.search_worker is not None and not self.search_worker.is_alive():
-                self.search_computing = False
-                self.search_worker = None
-            return
+        # Queue messages are tagged so resets/new puzzles cannot receive old traces.
+        for _ in range(256):
+            try:
+                token, step = self.pending_traces.get_nowait()
+            except queue.Empty:
+                break
+            if token == self.search_token:
+                self.trace_steps.append(step)
+                if len(self.trace_steps) == 1 and self.view_mode == "trace":
+                    self.select_step(0)
 
-        if self.search_running and not self.search_paused and self.search_path:
+        if self.search_computing and self.search_pending_result is not None and self.pending_traces.empty():
+            result = self.search_pending_result
+            self.search_pending_result = None
+            self.search_computing = False
+            self._finish_search(result)
+        elif self.search_computing and self.search_worker is not None and not self.search_worker.is_alive() and self.search_pending_result is None:
+            self.search_computing = False
+            self.search_running = False
+            self.search_paused = True
+            self.status = "ERROR"
+            self.status_detail = "Tìm kiếm đã dừng do lỗi. Nhấn G để thử lại; bản ghi đã có vẫn xem được."
+
+        if self.search_running and self.playback_length:
             if time.perf_counter() - self.last_step_time >= self.auto_delay:
-                self.step_search()
+                if self.playback_index < self.playback_length - 1:
+                    self.select_step(self.playback_index + 1, pause=False)
+                elif not self.search_computing:
+                    self.search_running = False
+                    self.search_paused = True
 
-        if self.search_result is None:
-            self.displayed_max_frontier = 0
-        elif not self.search_running:
-            self.displayed_max_frontier = self.search_result.max_frontier
-        else:
-            # Interpolate across solution steps so both animations end together.
-            progress = float(self.search_step)
-            if not self.search_paused:
-                progress += min(1.0, (time.perf_counter() - self.last_step_time) / self.auto_delay)
-            progress /= len(self.search_path) - 1
-            remaining = self.search_result.max_frontier - self.frontier_animation_start
-            frontier_target = self.frontier_animation_start + int(remaining * progress)
-            self.displayed_max_frontier = min(
-                self.search_result.max_frontier - 1,
-                max(self.displayed_max_frontier, frontier_target),
-            )
+    def describe_action(self, action: str) -> str:
+        if not action:
+            return "Trạng thái ban đầu"
+        cell, turns = action[1:].split("+")
+        row, col = self.puzzle.rc(int(cell))
+        return f"Ô ({row + 1}, {col + 1}) xoay {int(turns) * 90}°"
 
     def draw_text(self, text: str, position: tuple[int, int], color=None, font=None) -> None:
         self.screen.blit((font or self.font).render(text, True, color or COLORS["text"]), position)
@@ -517,7 +546,7 @@ class App:
         badge = pygame.Rect(174, 30, 142, 31)
         pygame.draw.rect(self.screen, COLORS["card_alt"], badge, border_radius=9)
         self.draw_text("GREEDY SEARCH", (badge.x + 19, badge.y + 8), COLORS["accent"], self.font_tiny)
-        self.draw_text("Nối các đầu ống. Khám phá một mạng lưới mới mỗi lần chơi.", (BOARD_MARGIN + 2, 66), COLORS["muted"], self.font_small)
+        self.draw_text("Theo dõi cách Greedy chọn trạng thái và tìm lời giải.", (BOARD_MARGIN + 2, 66), COLORS["muted"], self.font_small)
 
         self.header_buttons = {}
         new_rect = pygame.Rect(self.screen.get_width() - 334, 27, 150, 45)
@@ -558,10 +587,19 @@ class App:
         board_name = "Mạng thưa" if self.sparse_mode else PUZZLE_NAMES[self.puzzle_key]
         title = f"{self.puzzle.cols} x {self.puzzle.rows}  /  {board_name}  ·  {mode_name}"
         self.draw_text(title, (BOARD_MARGIN + 14, self.board_top + 20), COLORS["text"], self.font_bold)
-        self.draw_text("Xanh: n\u1ed1i kh\u1edbp   |   \u0110\u1ecf: l\u1ed7i k\u1ebft n\u1ed1i   |   Click \u00f4 \u0111\u1ec3 xoay", (BOARD_MARGIN + 14, self.board_top + 49), COLORS["muted"], self.font_tiny)
+        board_hint = "Viền vàng: ô xoay từ trạng thái cha  |  R: về chơi thủ công" if self.trace_steps or self.search_path else "Xanh: nối khớp  |  Đỏ: lỗi kết nối  |  Click ô để xoay"
+        self.draw_text(board_hint, (BOARD_MARGIN + 14, self.board_top + 49), COLORS["muted"], self.font_tiny)
         pill = pygame.Rect(BOARD_MARGIN + BOARD_W - 130, self.board_top + 18, 116, 27)
         pygame.draw.rect(self.screen, COLORS["card_alt"], pill, border_radius=12)
         self.draw_text(f"h={self.puzzle.heuristic(self.state)}  ·  {self.puzzle.count_mismatches(self.state)} lỗi", (pill.x + 10, pill.y + 7), COLORS["accent"], self.font_tiny)
+
+        if self.trace_steps or self.search_path:
+            caption = f"Đang xét node #{self.current_trace.node_id}" if self.view_mode == "trace" and self.current_trace else f"Lời giải · lần xoay {self.search_step}"
+            self.draw_text(caption, (BOARD_MARGIN + 14, self.board_top + 72), COLORS["accent"], self.font_tiny)
+        for col in range(self.puzzle.cols):
+            self.draw_text(str(col + 1), (grid_left + col * cell_size + cell_size // 2 - 4, grid_top - 20), COLORS["faint"], self.font_tiny)
+        for row in range(self.puzzle.rows):
+            self.draw_text(str(row + 1), (grid_left - 19, grid_top + row * cell_size + cell_size // 2 - 8), COLORS["faint"], self.font_tiny)
 
         changed = set()
         if self.previous_state is not None:
@@ -594,6 +632,8 @@ class App:
                     fill = COLORS["cell"]
                 pygame.draw.rect(self.screen, fill, rect, border_radius=12)
                 pygame.draw.rect(self.screen, COLORS["border"], rect, width=1, border_radius=12)
+                if idx in changed:
+                    pygame.draw.rect(self.screen, COLORS["yellow"], rect, width=2, border_radius=12)
                 self.draw_pipe(x, y, idx, bad)
                 if cell.locked and idx != self.puzzle.root_index:
                     pygame.draw.circle(self.screen, COLORS["yellow"], (rect.right - 13, rect.top + 13), 4)
@@ -607,9 +647,10 @@ class App:
             ("N\u1ed1i kh\u1edbp", COLORS["green"]),
             ("L\u1ed7i k\u1ebft n\u1ed1i", COLORS["red"]),
             ("G\u1ed1c ngu\u1ed3n", COLORS["source"]),
+            ("Ô vừa xoay", COLORS["yellow"]),
         ]
         for index, (label, color) in enumerate(legend_items):
-            x = BOARD_MARGIN + 48 + index * 174
+            x = BOARD_MARGIN + 20 + index * 132
             self.draw_text("\u25cf", (x, legend_y), color, self.font_small)
             self.draw_text(label, (x + 14, legend_y + 2), COLORS["muted"], self.font_tiny)
 
@@ -663,92 +704,158 @@ class App:
         self.screen.blit(rendered, rendered.get_rect(center=rect.center))
 
     def draw_sidebar(self) -> None:
-        x = self.panel_x
-        y = self.board_top
-        width = PANEL_W
-        panel = pygame.Rect(x, self.board_top, width, CARD_H)
-        self.draw_panel(panel)
+        x, y = self.panel_x, self.board_top
+        width = PANEL_W - 40
+        self.draw_panel(pygame.Rect(x, y, PANEL_W, CARD_H))
+        self.inspector_buttons = {}
+        self.action_buttons = {}
+        for index, (mode, label) in enumerate((("trace", "QUÁ TRÌNH TÌM KIẾM"), ("solution", "ĐƯỜNG ĐI LỜI GIẢI"))):
+            rect = pygame.Rect(x + 20 + index * (width // 2 + 4), y + 14, width // 2 - 4, 32)
+            self.inspector_buttons[mode] = rect
+            self.draw_button(rect, label, primary=self.view_mode == mode, disabled=mode == "solution" and not self.search_path)
+        self.draw_wrapped_text(self.status_detail, (x + 20, y + 54), width, COLORS["accent"] if self.search_computing else COLORS["muted"], self.font_tiny)
 
-        if self.status == "SOLVED":
-            heading, heading_color = "Đã giải xong", COLORS["green"]
-        elif self.status in ("SEARCHING", "ANIMATING"):
-            heading, heading_color = "Đang khám phá", COLORS["accent"]
-        elif self.status == "PAUSED":
-            heading, heading_color = "Đang tạm dừng", COLORS["yellow"]
-        elif self.status == "NO SOLUTION":
-            heading, heading_color = "Chưa tìm thấy lời giải", COLORS["red"]
+        controls = [
+            ("run", "Đang tìm…" if self.search_computing else "Chạy AI [G]", 111),
+            ("back", "Lùi", 49), ("step", "Tiến", 49),
+            ("pause", "Dừng" if self.search_running else "Phát", 60),
+            ("speed", ("0.5x", "1x", "2x", "5x")[self.speed_index], 47),
+            ("reset", "Reset", 65), ("cancel", "Hủy", 65),
+        ]
+        cx = x + 20
+        for name, label, button_width in controls:
+            rect = pygame.Rect(cx, y + 94, button_width, 34)
+            self.action_buttons[name] = rect
+            disabled = ((name == "run" and self.search_computing)
+                        or (name in ("back", "pause") and not self.playback_length)
+                        or (name == "back" and self.playback_index == 0)
+                        or (name == "step" and self.playback_length > 0 and self.playback_index == self.playback_length - 1)
+                        or (name == "cancel" and not (self.search_computing or self.search_running)))
+            self.draw_button(rect, label, primary=name == "run", disabled=disabled)
+            cx += button_width + 6
+
+        self.timeline_rect = pygame.Rect(x + 24, y + 141, width - 8, 12)
+        pygame.draw.rect(self.screen, COLORS["card_alt"], self.timeline_rect, border_radius=6)
+        progress = self.playback_index / max(1, self.playback_length - 1)
+        knob_x = self.timeline_rect.x + round(progress * self.timeline_rect.width)
+        pygame.draw.line(self.screen, COLORS["accent"], self.timeline_rect.midleft, (knob_x, self.timeline_rect.centery), 4)
+        pygame.draw.circle(self.screen, COLORS["accent"], (knob_x, self.timeline_rect.centery), 6)
+        step = self.current_trace
+        if self.view_mode == "trace":
+            label = f"Lượt mở rộng {step.number:,}  ·  Bản ghi {self.trace_index + 1}/{len(self.trace_steps)}" if step else "Chưa có bước tìm kiếm"
         else:
-            heading, heading_color = "Sẵn sàng khám phá", COLORS["accent"]
-        self.draw_text(heading, (x + 20, y + 25), heading_color, self.font_title)
-        self.draw_wrapped_text(
-            self.status_detail,
-            (x + 20, y + 64),
-            width - 40,
-            COLORS["muted"],
-            self.font_tiny,
-        )
+            label = f"Lần xoay {self.search_step}/{max(0, len(self.search_path) - 1)}"
+        self.draw_text(label, (x + 20, y + 158), COLORS["muted"], self.font_tiny)
 
+        if self.view_mode == "trace" and step is not None:
+            self.draw_trace_details(step, x, y)
+        elif self.view_mode == "solution" and self.search_path:
+            self.draw_solution_details(x, y)
+
+    def draw_trace_details(self, step: SearchTraceStep, x: int, y: int) -> None:
+        width = PANEL_W - 40
+        card = pygame.Rect(x + 12, y + 183, PANEL_W - 24, 96)
+        pygame.draw.rect(self.screen, COLORS["card_alt"], card, border_radius=10)
+        title = f"01  CHỌN #{step.node_id}  ·  độ sâu {step.depth}"
+        if step.is_goal:
+            title += "  ·  ĐẠT ĐÍCH"
+        self.draw_text(title, (x + 22, y + 192), COLORS["green"] if step.is_goal else COLORS["accent"], self.font_small)
+        self.draw_heuristic(self.state, x + 22, y + 216)
+        parent = f"  ·  từ cha #{step.parent_id}" if step.parent_id is not None else ""
+        self.draw_text(self.describe_action(step.action) + parent, (x + 22, y + 239), COLORS["text"], self.font_small)
+        self.draw_text("Đích: không lỗi nối, mọi ống nối về nguồn." if step.is_goal else "h nhỏ nhất; hòa điểm → độ sâu nhỏ hơn → vào hàng đợi trước.", (x + 22, y + 261), COLORS["muted"], self.font_tiny)
+
+        new_count = sum(not candidate.duplicate for candidate in step.candidates)
+        duplicates = len(step.candidates) - new_count
+        self.draw_text(f"THỬ XOAY  ·  {new_count} mới  ·  {duplicates} trùng", (x + 20, y + 289), COLORS["text"], self.font_small)
+        self.draw_text("PHÉP XOAY", (x + 28, y + 315), COLORS["faint"], self.font_tiny)
+        self.draw_text("h(n) / Δh", (x + 281, y + 315), COLORS["faint"], self.font_tiny)
+        self.draw_text("XỬ LÝ", (x + 389, y + 315), COLORS["faint"], self.font_tiny)
+        candidates = sorted(step.candidates, key=lambda item: (item.duplicate, item.heuristic if item.heuristic is not None else 0, item.node_id))
+        self.candidate_scroll = max(0, min(self.candidate_scroll, max(0, len(candidates) - 4)))
+        self.candidate_rect = pygame.Rect(x + 20, y + 333, width, 108)
+        next_id = step.frontier_preview[0].node_id if step.frontier_preview else None
+        for row, candidate in enumerate(candidates[self.candidate_scroll:self.candidate_scroll + 4]):
+            sy = y + 333 + row * 27
+            rect = pygame.Rect(x + 20, sy, width, 25)
+            pygame.draw.rect(self.screen, COLORS["card_alt"] if row % 2 == 0 else COLORS["card"], rect, border_radius=5)
+            color = COLORS["faint"] if candidate.duplicate else COLORS["green"] if candidate.node_id == next_id else COLORS["text"]
+            self.draw_text(self.describe_action(candidate.action), (x + 28, sy + 4), color, self.font_small)
+            score = "—" if candidate.heuristic is None else f"{candidate.heuristic} ({candidate.heuristic - step.heuristic:+})"
+            self.draw_text(score, (x + 281, sy + 5), color, self.font_tiny)
+            label = "Trùng · bỏ qua" if candidate.duplicate else f"Thêm #{candidate.node_id}"
+            self.draw_text(label, (x + 389, sy + 5), color, self.font_tiny)
+        if not candidates:
+            self.draw_text("Đã đạt đích; không sinh thêm nhánh.", (x + 28, y + 349), COLORS["green"], self.font_small)
+        elif len(candidates) > 4:
+            self.draw_text(f"Cuộn trong bảng để xem đủ {len(candidates)} phép xoay · xếp theo h(n)", (x + 20, y + 443), COLORS["faint"], self.font_tiny)
+
+        self.draw_text(f"HÀNG ĐỢI  ·  {step.frontier_before:,} → {step.frontier_after:,} trạng thái", (x + 20, y + 466), COLORS["text"], self.font_small)
+        for index, entry in enumerate(step.frontier_preview):
+            rect = pygame.Rect(x + 20 + index * 103, y + 490, 98, 36)
+            pygame.draw.rect(self.screen, COLORS["accent_dark"] if index == 0 else COLORS["card_alt"], rect, border_radius=7)
+            color = COLORS["green"] if index == 0 else COLORS["muted"]
+            self.draw_text(f"#{entry.node_id}", (rect.x + 6, rect.y + 2), color, self.font_tiny)
+            self.draw_text(f"h={entry.heuristic} · sâu {entry.depth}", (rect.x + 6, rect.y + 18), color, self.font_tiny)
+        next_text = "Đã gặp trạng thái đích; dừng tìm kiếm." if step.is_goal else "Xét tiếp: " + (f"#{next_id} (ô đầu) · ưu tiên theo h, độ sâu, thứ tự thêm." if next_id is not None else "Hàng đợi rỗng.")
+        self.draw_text(next_text, (x + 20, y + 529), COLORS["muted"], self.font_tiny)
+        self.draw_text(f"Tại bước này: đã tạo {step.generated:,}  ·  frontier lớn nhất {step.max_frontier:,}", (x + 20, y + 549), COLORS["muted"], self.font_tiny)
         result = self.search_result
         if self.search_computing:
             live = self.live_stats
-            metrics = [
-                ("\u0110\u00c3 M\u1ede R\u1ed8NG", f"{live['expanded']:,}"),
-                ("\u0110\u00c3 T\u1ea0O", f"{live['generated']:,}"),
-                ("FRONTIER MAX", f"{self.displayed_max_frontier:,}"),
-                ("TH\u1edcI GIAN", f"{max(0.0, time.perf_counter() - self.search_started_at):.2f}s"),
-            ]
+            summary = f"Đang chạy: mở rộng {live['expanded']:,}  ·  đã tạo {live['generated']:,}  ·  {time.perf_counter() - self.search_started_at:.2f}s"
+        elif result:
+            summary = f"Tổng: mở rộng {result.nodes_expanded:,}  ·  tạo {result.nodes_generated:,}  ·  {result.time_sec:.3f}s"
         else:
-            metrics = [
-                ("\u0110\u00c3 M\u1ede R\u1ed8NG", f"{result.nodes_expanded:,}" if result else "0"),
-                ("\u0110\u00c3 T\u1ea0O", f"{result.nodes_generated:,}" if result else "0"),
-                ("FRONTIER MAX", f"{self.displayed_max_frontier:,}"),
-                ("TH\u1edcI GIAN", f"{result.time_sec:.2f}s" if result else "0.00s"),
-            ]
-        stats = pygame.Rect(x + 20, y + 105, width - 40, 145)
-        self.draw_panel(stats)
-        for i, (label, value) in enumerate(metrics):
-            col, row = i % 2, i // 2
-            sx = stats.x + 14 + col * 153
-            sy = stats.y + 16 + row * 62
-            self.draw_text(label, (sx, sy), COLORS["faint"], self.font_tiny)
-            self.draw_text(value, (sx, sy + 17), COLORS["text"], self.font_number)
+            summary = ""
+        self.draw_text(summary, (x + 20, y + 568), COLORS["faint"], self.font_tiny)
+        expanded = result.nodes_expanded if result else self.live_stats["expanded"]
+        if expanded > MAX_TRACE_STEPS:
+            self.draw_text(f"Lưu {MAX_TRACE_STEPS:,} lượt đầu + đích (nếu có); lời giải giữ đủ các bước.", (x + 20, y + 587), COLORS["yellow"], self.font_tiny)
 
-        self.action_buttons = {}
-        run_rect = pygame.Rect(x + 20, y + 268, width - 40, 44)
-        self.action_buttons["run"] = run_rect
-        self.draw_button(run_rect, "Giải bằng Greedy", "G", primary=True, disabled=self.search_running or self.search_computing)
-        half = (width - 52) // 2
-        step_rect = pygame.Rect(x + 20, y + 324, half, 40)
-        pause_rect = pygame.Rect(x + 32 + half, y + 324, half, 40)
-        self.action_buttons["step"] = step_rect
-        self.action_buttons["pause"] = pause_rect
-        self.draw_button(step_rect, "Một bước", "S")
-        can_pause = bool(self.search_path) and not self.solved
-        self.draw_button(
-            pause_rect,
-            "D\u1eebng" if not self.search_paused else "Ti\u1ebfp t\u1ee5c",
-            "Space",
-            disabled=not can_pause,
-        )
-        reset_rect = pygame.Rect(x + 20, y + 380, half, 40)
-        cancel_rect = pygame.Rect(x + 32 + half, y + 380, half, 40)
-        self.action_buttons["reset"] = reset_rect
-        self.action_buttons["cancel"] = cancel_rect
-        self.draw_button(reset_rect, "Reset", "R")
-        self.draw_button(cancel_rect, "Hủy", "C", disabled=not (self.search_computing or self.search_running or self.search_path))
+    def draw_heuristic(self, state: tuple[int, ...], x: int, y: int) -> None:
+        mismatches = self.puzzle.count_mismatches(state)
+        connected, active = self.puzzle._connectivity_stats(state)
+        self.draw_text(f"h(n) = {mismatches} điểm lỗi nối + {active - connected} ô chưa nối nguồn = {mismatches + active - connected}", (x, y), COLORS["yellow"], self.font_small)
 
-        pygame.draw.line(self.screen, COLORS["border"], (x + 20, y + 455), (x + width - 20, y + 455))
-        self.draw_text(f"SEED  {self.seed_value}", (x + 20, y + 480), COLORS["accent"], self.font_tiny)
-        self.draw_text("Click ô để xoay ống  ·  h(n) càng nhỏ càng gần đích", (x + 20, y + 509), COLORS["muted"], self.font_tiny)
-        self.draw_text(f"Bước: {self.search_step}/{result.depth if result and result.found else 0}", (x + 20, y + 538), COLORS["muted"], self.font_tiny)
+    def draw_solution_details(self, x: int, y: int) -> None:
+        self.draw_text("ĐƯỜNG ĐI TỪ BAN ĐẦU ĐẾN ĐÍCH", (x + 20, y + 192), COLORS["accent"], self.font_bold)
+        self.draw_heuristic(self.state, x + 20, y + 226)
+        self.draw_text("Mỗi bước dưới đây là một phép xoay trên đường đi đã tìm được.", (x + 20, y + 257), COLORS["muted"], self.font_tiny)
+        first = max(0, min(self.search_step - 3, len(self.search_path) - 7))
+        self.solution_buttons = {}
+        for index in range(first, min(first + 7, len(self.search_path))):
+            sy = y + 291 + (index - first) * 34
+            rect = pygame.Rect(x + 20, sy, PANEL_W - 40, 30)
+            self.solution_buttons[index] = rect
+            pygame.draw.rect(self.screen, COLORS["accent_dark"] if index == self.search_step else COLORS["card_alt"], rect, border_radius=7)
+            action = self.describe_action(self.search_result.actions[index - 1]) if index and self.search_result else "Trạng thái ban đầu"
+            self.draw_text(f"{index:02}   {action}", (x + 30, sy + 6), COLORS["text"], self.font_small)
+            self.draw_text(f"h={self.puzzle.heuristic(self.search_path[index])}", (x + PANEL_W - 73, sy + 7), COLORS["green"], self.font_tiny)
+        message = "Đã nối toàn bộ mạng ống về nguồn." if self.solved else "Dùng Lùi / Tiến để xem phép xoay trước và sau."
+        self.draw_text(message, (x + 20, y + 546), COLORS["green"] if self.solved else COLORS["muted"], self.font_small)
+        self.draw_text("Tab Quá trình tìm kiếm cho biết AI đã xét những nhánh nào.", (x + 20, y + 576), COLORS["faint"], self.font_tiny)
 
     def draw_footer(self) -> None:
         y = self.screen.get_height() - 27
         pygame.draw.line(self.screen, COLORS["border"], (BOARD_MARGIN, y - 10), (self.screen.get_width() - BOARD_MARGIN, y - 10))
-        footer = "1–4  Đổi cỡ lưới     N  Bài toán mới     M  Mật độ     T  Bảng màu     Click  Xoay ống     Esc  Thoát"
+        footer = f"G  Chạy AI    ← / →  Từng bước    Space  Phát/dừng    Tab  Đổi chế độ xem    R  Reset    1–4  Cỡ lưới    N  Bài mới    M  Mật độ    T  Màu    Seed {self.seed_value}"
         self.draw_text(footer, (BOARD_MARGIN, y), COLORS["faint"], self.font_tiny)
 
     def handle_click(self, position: tuple[int, int]) -> None:
+        for mode, rect in self.inspector_buttons.items():
+            if rect.collidepoint(position):
+                self.set_view(mode)
+                return
+        if self.timeline_rect.inflate(0, 12).collidepoint(position):
+            self.timeline_dragging = True
+            self.seek_timeline(position[0])
+            return
+        if self.view_mode == "solution":
+            for index, rect in getattr(self, "solution_buttons", {}).items():
+                if rect.collidepoint(position):
+                    self.select_step(index)
+                    return
         for key, rect in self.puzzle_buttons.items():
             if rect.collidepoint(position):
                 self.switch_puzzle(key)
@@ -763,6 +870,10 @@ class App:
             self.run_greedy()
         elif self.action_buttons.get("step", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
             self.step_search()
+        elif self.action_buttons.get("back", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
+            self.step_search(-1)
+        elif self.action_buttons.get("speed", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
+            self.cycle_speed()
         elif self.action_buttons.get("pause", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
             self.toggle_pause()
         elif self.action_buttons.get("reset", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
@@ -793,6 +904,16 @@ class App:
                         self.run_greedy()
                     elif event.key == pygame.K_s:
                         self.step_search()
+                    elif event.key == pygame.K_RIGHT:
+                        self.step_search()
+                    elif event.key == pygame.K_LEFT:
+                        self.step_search(-1)
+                    elif event.key == pygame.K_HOME:
+                        self.select_step(0)
+                    elif event.key == pygame.K_END:
+                        self.select_step(self.playback_length - 1)
+                    elif event.key == pygame.K_TAB:
+                        self.set_view("solution" if self.view_mode == "trace" else "trace")
                     elif event.key == pygame.K_r:
                         self.reset()
                     elif event.key == pygame.K_c:
@@ -801,6 +922,13 @@ class App:
                         self.toggle_pause()
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self.handle_click(event.pos)
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    self.timeline_dragging = False
+                elif event.type == pygame.MOUSEMOTION and self.timeline_dragging:
+                    self.seek_timeline(event.pos[0])
+                elif event.type == pygame.MOUSEWHEEL and self.view_mode == "trace":
+                    if self.candidate_rect.collidepoint(pygame.mouse.get_pos()):
+                        self.candidate_scroll -= event.y * 2
             self.update()
             self.draw()
             self.clock.tick(FPS)
