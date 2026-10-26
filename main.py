@@ -54,6 +54,12 @@ THEME_DARK = {
     "source": (255, 88, 92),
     "yellow": (255, 201, 91),
     "white": (255, 255, 255),
+    "pipe": (66, 213, 181),
+    "pipe_open": (247, 127, 158),
+    "pipe_end": (255, 197, 105),
+    "pipe_straight": (99, 199, 245),
+    "pipe_elbow": (183, 151, 251),
+    "pipe_tee": (244, 155, 188),
 }
 THEME_AURORA = {
     **THEME_DARK,
@@ -97,6 +103,17 @@ PUZZLE_NAMES = {
 }
 DIRS = [(-1, 0), (0, 1), (1, 0), (0, -1)]
 OPPOSITE = [2, 3, 0, 1]
+PIPE_STYLES = {
+    "END": ("Đầu bịt", "pipe_end"),
+    "STRAIGHT": ("Thẳng", "pipe_straight"),
+    "ELBOW": ("Góc", "pipe_elbow"),
+    "TEE": ("Chữ T", "pipe_tee"),
+    "CROSS": ("Ngã tư", "pipe"),
+}
+
+
+def mix_color(base: tuple[int, ...], tint: tuple[int, ...], amount: float) -> tuple[int, ...]:
+    return tuple(round(a + (b - a) * amount) for a, b in zip(base, tint))
 
 
 def load_puzzle(path: str) -> PipesPuzzle:
@@ -135,6 +152,8 @@ class App:
         self.solution_state: Optional[tuple[int, ...]] = None
         self.seed_value = 42
         self.previous_state: Optional[tuple[int, ...]] = None
+        self._pipe_cache_key: Optional[tuple] = None
+        self._pipe_cache: Optional[pygame.Surface] = None
         self.theme_alt = False
         # Sparse is the default so new boards start with fewer pre-connected edges.
         self.sparse_mode = True
@@ -583,11 +602,19 @@ class App:
         cell_size = self.cell_size
         board_rect = pygame.Rect(BOARD_MARGIN, self.board_top, BOARD_W, CARD_H)
         self.draw_panel(board_rect)
-        mode_name = "SPARSE" if self.sparse_mode else "DENSE"
         board_name = "Mạng thưa" if self.sparse_mode else PUZZLE_NAMES[self.puzzle_key]
-        title = f"{self.puzzle.cols} x {self.puzzle.rows}  /  {board_name}  ·  {mode_name}"
+        title = f"{self.puzzle.cols} × {self.puzzle.rows}  /  {board_name}"
         self.draw_text(title, (BOARD_MARGIN + 14, self.board_top + 20), COLORS["text"], self.font_bold)
-        board_hint = "Viền vàng: ô xoay từ trạng thái cha  |  R: về chơi thủ công" if self.trace_steps or self.search_path else "Xanh: nối khớp  |  Đỏ: lỗi kết nối  |  Click ô để xoay"
+        connections = [set(self.puzzle.get_connections(self.state, idx)) for idx in range(len(self.state))]
+        matched_edges = 0
+        for idx, directions in enumerate(connections):
+            row, col = self.puzzle.rc(idx)
+            for direction in (1, 2):
+                dr, dc = DIRS[direction]
+                if direction in directions and row + dr < self.puzzle.rows and col + dc < self.puzzle.cols:
+                    neighbour = self.puzzle.idx(row + dr, col + dc)
+                    matched_edges += OPPOSITE[direction] in connections[neighbour]
+        board_hint = "Viền vàng: ô xoay từ trạng thái cha  |  R: về chơi thủ công" if self.trace_steps or self.search_path else f"Xanh sáng: nối đúng  ·  Hồng: đầu hở  ·  {matched_edges} mối nối"
         self.draw_text(board_hint, (BOARD_MARGIN + 14, self.board_top + 49), COLORS["muted"], self.font_tiny)
         pill = pygame.Rect(BOARD_MARGIN + BOARD_W - 130, self.board_top + 18, 116, 27)
         pygame.draw.rect(self.screen, COLORS["card_alt"], pill, border_radius=12)
@@ -611,6 +638,7 @@ class App:
             hover_row = (mouse_y - grid_top) // cell_size
             if 0 <= hover_row < self.puzzle.rows and 0 <= hover_col < self.puzzle.cols:
                 hovered_idx = self.puzzle.idx(hover_row, hover_col)
+        cell_markers = []
         for row in range(self.puzzle.rows):
             for col in range(self.puzzle.cols):
                 idx = self.puzzle.idx(row, col)
@@ -620,74 +648,119 @@ class App:
                 inset = max(3, cell_size // 24)
                 rect = pygame.Rect(x + inset, y + inset, cell_size - 2 * inset, cell_size - 2 * inset)
                 bad = cell_is_bad(self.puzzle, self.state, idx)
-                if cell.locked:
-                    fill = COLORS["cell_locked"]
-                elif idx in changed:
-                    fill = COLORS["cell_hover"]
-                elif hovered_idx == idx:
-                    fill = COLORS["cell_hover"]
-                elif bad:
-                    fill = (66, 42, 68)
-                else:
-                    fill = COLORS["cell"]
+                type_color = COLORS[PIPE_STYLES.get(cell.type, ("", "faint"))[1]]
+                tint = type_color if bad else COLORS["pipe"]
+                fill = mix_color(COLORS["board"], tint, 0.14)
+                if idx in changed or hovered_idx == idx:
+                    fill = mix_color(fill, tint, 0.12)
+                border = mix_color(fill, tint, 0.22)
                 pygame.draw.rect(self.screen, fill, rect, border_radius=12)
-                pygame.draw.rect(self.screen, COLORS["border"], rect, width=1, border_radius=12)
+                pygame.draw.rect(self.screen, border, rect, width=1, border_radius=12)
                 if idx in changed:
                     pygame.draw.rect(self.screen, COLORS["yellow"], rect, width=2, border_radius=12)
-                self.draw_pipe(x, y, idx, bad)
-                if cell.locked and idx != self.puzzle.root_index:
-                    pygame.draw.circle(self.screen, COLORS["yellow"], (rect.right - 13, rect.top + 13), 4)
-                    self.draw_text("L", (rect.right - 22, rect.top + 7), COLORS["yellow"], self.font_tiny)
-                if idx == self.puzzle.root_index:
-                    pygame.draw.circle(self.screen, COLORS["source"], (rect.right - 13, rect.top + 13), 5)
-                    self.draw_text("G", (rect.right - 22, rect.top + 7), COLORS["source"], self.font_tiny)
+                cell_markers.append((idx, rect, bad))
+
+        # Draw the network after every tile so matching pipes cross the gutters.
+        self.draw_pipes(connections)
+        for idx, rect, bad in cell_markers:
+            if bad:
+                cx, cy = rect.right - 10, rect.top + 10
+                pygame.draw.polygon(self.screen, COLORS["pipe_open"], [(cx, cy - 3), (cx + 3, cy), (cx, cy + 3), (cx - 3, cy)])
+            if idx == self.puzzle.root_index:
+                badge = pygame.Rect(rect.left + 5, rect.top + 4, 17, 17)
+                pygame.draw.rect(self.screen, COLORS["accent_dark"], badge, border_radius=5)
+                label = self.font_tiny.render("G", True, COLORS["source"])
+                self.screen.blit(label, label.get_rect(center=badge.center))
+            elif self.puzzle.cells[idx].locked:
+                lock = pygame.Rect(rect.left + 8, rect.top + 11, 7, 6)
+                pygame.draw.rect(self.screen, COLORS["faint"], lock, border_radius=1)
+                pygame.draw.arc(self.screen, COLORS["faint"], (lock.x + 1, lock.y - 5, 5, 8), 0, 3.14159, 1)
 
         legend_y = board_rect.bottom - 45
-        legend_items = [
-            ("N\u1ed1i kh\u1edbp", COLORS["green"]),
-            ("L\u1ed7i k\u1ebft n\u1ed1i", COLORS["red"]),
-            ("G\u1ed1c ngu\u1ed3n", COLORS["source"]),
-            ("Ô vừa xoay", COLORS["yellow"]),
-        ]
-        for index, (label, color) in enumerate(legend_items):
-            x = BOARD_MARGIN + 20 + index * 132
-            self.draw_text("\u25cf", (x, legend_y), color, self.font_small)
-            self.draw_text(label, (x + 14, legend_y + 2), COLORS["muted"], self.font_tiny)
+        legend_width = (BOARD_W - 40) // len(PIPE_STYLES)
+        for index, (label, color_key) in enumerate(PIPE_STYLES.values()):
+            x = BOARD_MARGIN + 20 + index * legend_width
+            pygame.draw.circle(self.screen, COLORS[color_key], (x + 4, legend_y + 9), 4)
+            self.draw_text(label, (x + 14, legend_y + 1), COLORS["muted"], self.font_tiny)
+        board_control = "R: về chơi thủ công" if self.trace_steps or self.search_path else "Click ô để xoay"
+        self.draw_text(f"{board_control}  ·  G: gốc nguồn cố định", (BOARD_MARGIN + 20, legend_y + 23), COLORS["faint"], self.font_tiny)
 
-    def draw_pipe(self, x: int, y: int, idx: int, bad: bool) -> None:
-        connections = self.puzzle.get_connections(self.state, idx)
-        cell_size = self.cell_size
-        center = (x + cell_size // 2, y + cell_size // 2)
-        endpoint_pad = max(8, int(cell_size * 0.11))
-        line_width = max(8, int(cell_size * 0.12))
-        endpoint_radius = max(4, int(cell_size * 0.055))
-        center_radius = max(9, int(cell_size * 0.12))
-        center_hole_radius = max(4, int(cell_size * 0.055))
-        if not connections:
-            pygame.draw.circle(self.screen, COLORS["faint"], center, 4)
+    def draw_pipes(self, connections: list[set[int]]) -> None:
+        """Render a smooth, continuous network; reuse it until the board changes."""
+        cache_key = (self.puzzle, self.state, self.cell_size, tuple(COLORS.items()))
+        if cache_key == self._pipe_cache_key and self._pipe_cache is not None:
+            self.screen.blit(self._pipe_cache, (self.grid_left, self.grid_top))
             return
-        row, col = self.puzzle.rc(idx)
-        for direction in connections:
-            dr, dc = DIRS[direction]
-            nr, nc = row + dr, col + dc
-            arm_bad = not (0 <= nr < self.puzzle.rows and 0 <= nc < self.puzzle.cols)
-            if not arm_bad:
-                neighbour = self.puzzle.idx(nr, nc)
-                arm_bad = OPPOSITE[direction] not in self.puzzle.get_connections(self.state, neighbour)
-            end = list(center)
-            if direction == 0:
-                end[1] = y + endpoint_pad
-            elif direction == 1:
-                end[0] = x + cell_size - endpoint_pad
-            elif direction == 2:
-                end[1] = y + cell_size - endpoint_pad
+
+        scale = 3
+        cell_size = self.cell_size
+        layer = pygame.Surface((self.board_size * scale, self.puzzle.rows * cell_size * scale), pygame.SRCALPHA)
+
+        def point(position):
+            return tuple(round(value * scale) for value in position)
+
+        def circle(color, center, radius):
+            pygame.draw.circle(layer, color, point(center), max(1, round(radius * scale)))
+
+        def stroke(color, start, end, width):
+            pygame.draw.line(layer, color, point(start), point(end), max(1, round(width * scale)))
+            circle(color, start, width / 2)
+            circle(color, end, width / 2)
+
+        def diamond(color, center, radius):
+            cx, cy = center
+            pygame.draw.polygon(layer, color, [point((cx, cy - radius)), point((cx + radius, cy)), point((cx, cy + radius)), point((cx - radius, cy))])
+
+        arms = []
+        nodes = []
+        for idx, directions in enumerate(connections):
+            row, col = self.puzzle.rc(idx)
+            center = ((col + 0.5) * cell_size, (row + 0.5) * cell_size)
+            type_color = COLORS[PIPE_STYLES.get(self.puzzle.cells[idx].type, ("", "faint"))[1]]
+            nodes.append((center, type_color, bool(directions)))
+            for direction in sorted(directions):
+                dr, dc = DIRS[direction]
+                nr, nc = row + dr, col + dc
+                matched = (0 <= nr < self.puzzle.rows and 0 <= nc < self.puzzle.cols
+                           and OPPOSITE[direction] in connections[self.puzzle.idx(nr, nc)])
+                # Matching arms meet exactly at the shared tile boundary.
+                length = cell_size * (0.5 if matched else 0.36)
+                end = (center[0] + dc * length, center[1] + dr * length)
+                color = COLORS["pipe"] if matched else type_color
+                arms.append((center, end, color, matched))
+
+        # Separate passes keep adjacent tiles from painting over each other's pipes.
+        for center, end, color, _ in arms:
+            stroke((*color, 24), center, end, cell_size * 0.24)
+        for center, color, active in nodes:
+            if active:
+                circle((*COLORS["pipe"], 30), center, cell_size * 0.22)
+                circle((*color, 24), center, cell_size * 0.17)
+        for center, end, color, _ in arms:
+            stroke(mix_color(COLORS["board"], color, 0.32), center, end, cell_size * 0.15)
+        for center, end, color, _ in arms:
+            stroke(color, center, end, cell_size * 0.085)
+            stroke(mix_color(color, COLORS["white"], 0.2), center, end, cell_size * 0.022)
+        for center, end, _, matched in arms:
+            if matched:
+                glint = (center[0] + (end[0] - center[0]) * 0.58, center[1] + (end[1] - center[1]) * 0.58)
+                diamond((184, 255, 231), glint, cell_size * 0.028)
             else:
-                end[0] = x + endpoint_pad
-            color = COLORS["red"] if arm_bad else COLORS["green"]
-            pygame.draw.line(self.screen, color, center, tuple(end), line_width)
-            pygame.draw.circle(self.screen, color, tuple(end), endpoint_radius)
-        pygame.draw.circle(self.screen, COLORS["red"] if bad else COLORS["green"], center, center_radius)
-        pygame.draw.circle(self.screen, COLORS["cell"], center, center_hole_radius)
+                # A pink cap marks the precise opening, even on a blue/purple pipe.
+                circle(COLORS["pipe_open"], end, cell_size * 0.049)
+                diamond(COLORS["pipe_open"], end, cell_size * 0.067)
+        for center, color, active in nodes:
+            if not active:
+                circle(COLORS["faint"], center, 2)
+                continue
+            circle(mix_color(COLORS["board"], COLORS["pipe"], 0.3), center, cell_size * 0.12)
+            circle(color, center, cell_size * 0.098)
+            circle(COLORS["board"], center, cell_size * 0.047)
+            diamond((208, 255, 241), center, cell_size * 0.027)
+
+        self._pipe_cache = pygame.transform.smoothscale(layer, (self.board_size, self.puzzle.rows * cell_size))
+        self._pipe_cache_key = cache_key
+        self.screen.blit(self._pipe_cache, (self.grid_left, self.grid_top))
 
     def draw_button(self, rect: pygame.Rect, label: str, key: str = "", primary: bool = False, disabled: bool = False) -> None:
         hover = rect.collidepoint(pygame.mouse.get_pos()) and not disabled

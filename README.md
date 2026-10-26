@@ -50,7 +50,7 @@ python benchmark.py
 | Click ô | Xoay ống 90 độ khi chơi thủ công; nhấn `R` để về chơi sau khi xem AI |
 | `Esc` / `Q` | Thoát |
 
-Trong giao diện, phần xanh là đầu nối khớp, còn đỏ là đầu nối chưa khớp. Viền vàng đánh dấu ô vừa được xoay. Các hàng/cột được đánh số từ 1 để đối chiếu với bảng phép xoay.
+Trong giao diện, các đầu nối khớp tạo thành đường ống xanh ngọc liên tục, có quầng sáng và điểm sáng nhỏ. Đầu hở được đánh dấu hồng; hình thoi hồng ở góc ô báo lỗi kết nối. Màu nút giữa phân biệt loại ống: vàng cho đầu bịt, xanh dương cho ống thẳng, tím cho ống góc, hồng cho chữ T và xanh ngọc cho ngã tư. Ký hiệu `G` đánh dấu gốc nguồn cố định, biểu tượng khóa đánh dấu các ô cố định khác. Viền vàng đánh dấu ô vừa được xoay. Các hàng/cột được đánh số từ 1 để đối chiếu với bảng phép xoay.
 
 ## Xem AI giải từng bước
 
