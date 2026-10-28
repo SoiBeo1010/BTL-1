@@ -100,4 +100,12 @@ Each scramble starts from a valid solution, so Greedy Best-First Search always h
 
 ## Báo cáo
 
-Thư mục `report/` chứa báo cáo và tài liệu cục bộ, được bỏ qua bởi `.gitignore` và không đưa vào các commit tiếp theo. Nếu bạn đã tạo báo cáo trên máy, các file vẫn được giữ nguyên tại đây.
+Thư mục `report/` chứa báo cáo và tài liệu cục bộ, được bỏ qua bởi `.gitignore`. Bản PDF hiện tại và gói nguồn Overleaf nằm trong `report/output/`; nguồn LaTeX ở `report/latex/`, script ở `report/scripts/`, số liệu ở `report/data/`. Các bản cũ được giữ trong `report/archive/`, còn file biên dịch trung gian nằm ở `report/build/`.
+
+Khi có đủ tài liệu cục bộ và đã cài XeLaTeX hoặc Tectonic, xuất lại báo cáo từ thư mục gốc project:
+
+```powershell
+python -B report/scripts/build_report.py
+```
+
+Hướng dẫn chỉnh sửa và tái lập số liệu nằm trong `report/README.md`. Các lượt đo thực nghiệm được giữ nguyên khi sắp xếp lại thư mục.
