@@ -31,7 +31,7 @@ MAX_TRACE_STEPS = 2_000
 PLAYBACK_DELAYS = (1.6, 0.8, 0.4, 0.16)
 GRID_AREA_TOP = 112
 GRID_AREA_BOTTOM = 56
-MIN_CELL = 64
+MIN_CELL = 48
 MAX_CELL = 110
 
 THEME_DARK = {
@@ -84,24 +84,28 @@ PUZZLE_FILES = {
     "2": os.path.join(BASE_DIR, "puzzles", "easy_4x4.json"),
     "3": os.path.join(BASE_DIR, "puzzles", "medium_5x5.json"),
     "4": os.path.join(BASE_DIR, "puzzles", "hard_6x6.json"),
+    "5": os.path.join(BASE_DIR, "puzzles", "large_7x7.json"),
 }
 PUZZLE_LABELS = {
     "1": ("TINY", "3 x 3"),
     "2": ("EASY", "4 x 4"),
     "3": ("MEDIUM", "5 x 5"),
     "4": ("HARD", "6 x 6"),
+    "5": ("LARGE", "7 x 7"),
 }
 PUZZLE_SIZES = {
     "1": (3, 3),
     "2": (4, 4),
     "3": (5, 5),
     "4": (6, 6),
+    "5": (7, 7),
 }
 PUZZLE_NAMES = {
     "1": "M\u1ea1ng nh\u1ecf",
     "2": "M\u1ea1ng c\u01a1 b\u1ea3n",
     "3": "M\u1ea1ng nhi\u1ec1u nh\u00e1nh",
     "4": "M\u1ea1ng nhi\u1ec1u v\u00f2ng",
+    "5": "Mạng lớn",
 }
 DIRS = [(-1, 0), (0, 1), (1, 0), (0, -1)]
 OPPOSITE = [2, 3, 0, 1]
@@ -574,12 +578,20 @@ class App:
         pygame.draw.rect(self.screen, COLORS["card"], rect, border_radius=18)
         pygame.draw.rect(self.screen, COLORS["border"], rect, width=1, border_radius=18)
 
-    def draw_lock(self, position: tuple[int, int]) -> None:
+    def draw_lock(self, position: tuple[int, int], scale: float = 1.0) -> None:
         x, y = position
-        pygame.draw.rect(self.screen, COLORS["locked"], (x + 3, y, 8, 11), width=2, border_radius=4)
-        pygame.draw.rect(self.screen, COLORS["locked"], (x, y + 6, 14, 10), border_radius=3)
-        pygame.draw.circle(self.screen, COLORS["cell_locked"], (x + 7, y + 10), 2)
-        pygame.draw.line(self.screen, COLORS["cell_locked"], (x + 7, y + 10), (x + 7, y + 13), 2)
+
+        def point(dx: int, dy: int) -> tuple[int, int]:
+            return x + round(dx * scale), y + round(dy * scale)
+
+        def rect(dx: int, dy: int, width: int, height: int) -> pygame.Rect:
+            return pygame.Rect(*point(dx, dy), round(width * scale), round(height * scale))
+
+        line_width = max(1, round(2 * scale))
+        pygame.draw.rect(self.screen, COLORS["locked"], rect(3, 0, 8, 11), width=line_width, border_radius=round(4 * scale))
+        pygame.draw.rect(self.screen, COLORS["locked"], rect(0, 6, 14, 10), border_radius=round(3 * scale))
+        pygame.draw.circle(self.screen, COLORS["cell_locked"], point(7, 10), line_width)
+        pygame.draw.line(self.screen, COLORS["cell_locked"], point(7, 10), point(7, 13), line_width)
 
     def draw(self) -> None:
         self.screen.fill(COLORS["bg"])
@@ -625,9 +637,10 @@ class App:
 
         tab_y = 113
         tab_gap = 10
-        tab_w = (self.screen.get_width() - 2 * BOARD_MARGIN - 3 * tab_gap) // 4
+        tab_count = len(PUZZLE_SIZES)
+        tab_w = (self.screen.get_width() - 2 * BOARD_MARGIN - (tab_count - 1) * tab_gap) // tab_count
         self.puzzle_buttons = {}
-        for i, key in enumerate(("1", "2", "3", "4")):
+        for i, key in enumerate(PUZZLE_SIZES):
             rect = pygame.Rect(BOARD_MARGIN + i * (tab_w + tab_gap), tab_y, tab_w, 40)
             self.puzzle_buttons[key] = rect
             label, size = PUZZLE_LABELS[key]
@@ -636,7 +649,8 @@ class App:
             pygame.draw.rect(self.screen, fill, rect, border_radius=11)
             if active:
                 pygame.draw.rect(self.screen, COLORS["accent"], rect, width=1, border_radius=11)
-            self.draw_text(f"[{key}]  {label}  ·  {size}", (rect.x + 27, rect.y + 11), COLORS["text"], self.font)
+            caption = self.font_small.render(f"[{key}] {label} · {size}", True, COLORS["text"])
+            self.screen.blit(caption, caption.get_rect(center=rect.center))
 
     def draw_board(self) -> None:
         grid_left = self.grid_left
@@ -719,18 +733,25 @@ class App:
         # Draw the network after every tile so matching pipes cross the gutters.
         self.draw_pipes(connections)
         for idx, rect, bad in cell_markers:
+            marker_scale = min(1.0, cell_size / 64)
+            marker_margin = max(2, round(5 * marker_scale))
             if bad:
                 cx, cy = rect.right - 10, rect.top + 10
                 pygame.draw.polygon(self.screen, COLORS["pipe_open"], [(cx, cy - 3), (cx + 3, cy), (cx, cy + 3), (cx - 3, cy)])
             if idx in fixed_cells:
-                badge = pygame.Rect(rect.left + 5, rect.top + 5, 22, 24)
+                badge = pygame.Rect(rect.left + marker_margin, rect.top + marker_margin,
+                                    round(22 * marker_scale), round(24 * marker_scale))
                 pygame.draw.rect(self.screen, COLORS["cell_locked"], badge, border_radius=5)
                 pygame.draw.rect(self.screen, COLORS["locked"], badge, width=1, border_radius=5)
-                self.draw_lock((badge.left + 4, badge.top + 4))
+                self.draw_lock((badge.left + round(4 * marker_scale), badge.top + round(4 * marker_scale)), marker_scale)
             if idx == self.puzzle.root_index:
-                badge = pygame.Rect(rect.left + 5, rect.bottom - 22, 17, 17)
+                badge_size = round(17 * marker_scale)
+                badge = pygame.Rect(rect.left + marker_margin, rect.bottom - badge_size - marker_margin, badge_size, badge_size)
                 pygame.draw.rect(self.screen, COLORS["accent_dark"], badge, border_radius=5)
                 label = self.font_tiny.render("G", True, COLORS["source"])
+                if marker_scale < 1.0:
+                    label = pygame.transform.smoothscale(label, (max(1, round(label.get_width() * marker_scale)),
+                                                                 max(1, round(label.get_height() * marker_scale))))
                 self.screen.blit(label, label.get_rect(center=badge.center))
 
         legend_y = board_rect.bottom - 45
@@ -975,7 +996,7 @@ class App:
     def draw_footer(self) -> None:
         y = self.screen.get_height() - 27
         pygame.draw.line(self.screen, COLORS["border"], (BOARD_MARGIN, y - 10), (self.screen.get_width() - BOARD_MARGIN, y - 10))
-        footer = f"G  Chạy AI    ← / →  Từng bước    Space  Phát/dừng    Tab  Đổi chế độ xem    R  Reset    1–4  Cỡ lưới    N  Bài mới    M  Mật độ    T  Màu    Seed {self.seed_value}"
+        footer = f"G  Chạy AI    ← / →  Từng bước    Space  Phát/dừng    Tab  Đổi chế độ xem    R  Reset    1–5  Cỡ lưới    N  Bài mới    M  Mật độ    T  Màu    Seed {self.seed_value}"
         self.draw_text(footer, (BOARD_MARGIN, y), COLORS["faint"], self.font_tiny)
 
     def handle_click(self, position: tuple[int, int]) -> None:

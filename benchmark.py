@@ -15,6 +15,7 @@ PUZZLES = [
     "puzzles/easy_4x4.json",
     "puzzles/medium_5x5.json",
     "puzzles/hard_6x6.json",
+    "puzzles/large_7x7.json",
 ]
 
 

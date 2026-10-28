@@ -10,7 +10,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame
 
 from generator import make_random_puzzle
-from main import App
+from main import App, BOARD_MARGIN, BOARD_W, CARD_H, GRID_AREA_BOTTOM, PUZZLE_SIZES
 from search import ALGORITHMS, SearchAlgorithm, greedy_best_first
 
 
@@ -127,11 +127,31 @@ class TraceUITests(unittest.TestCase):
         app.update()
         app.set_view("solution")
         app.draw()
-        for key in ("1", "2", "3", "4"):
+        for key in PUZZLE_SIZES:
             app.switch_puzzle(key)
             app.draw()
-            self.assertLess(app.grid_top + app.board_size, app.board_top + 605)
+            self.assertLessEqual(app.grid_top + app.board_size, app.board_top + CARD_H - GRID_AREA_BOTTOM)
             self.assertGreaterEqual(app.grid_top - 20, app.board_top + 72 + app.font_tiny.get_linesize())
+            self.assertGreaterEqual(app.grid_left, BOARD_MARGIN)
+            self.assertLessEqual(app.grid_left + app.board_size, BOARD_MARGIN + BOARD_W)
+
+    def test_large_grid_can_be_selected_and_clicked_in_both_modes(self):
+        app = self.app
+        for sparse in (False, True):
+            app.sparse_mode = sparse
+            app.draw()
+            app.handle_click(app.puzzle_buttons["5"].center)
+            self.assertEqual((app.puzzle.rows, app.puzzle.cols), (7, 7))
+            self.assertTrue(app.puzzle.is_goal(app.solution_state))
+            app.draw()
+            index = next(i for i in reversed(range(len(app.puzzle.cells)))
+                         if not app.puzzle.cells[i].locked and app.puzzle.cells[i].type not in ("CROSS", "EMPTY"))
+            row, col = app.puzzle.rc(index)
+            before = app.state
+            app.handle_click((app.grid_left + col * app.cell_size + app.cell_size // 2,
+                              app.grid_top + row * app.cell_size + app.cell_size // 2))
+            self.assertEqual(app.state[index], (before[index] + 1) % 4)
+            self.assertEqual(sum(a != b for a, b in zip(before, app.state)), 1)
 
     def test_algorithm_buttons_dispatch_solver_and_restore_start_when_switching(self):
         app = self.app

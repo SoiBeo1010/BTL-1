@@ -15,9 +15,9 @@ pipes_project/
 │   └── registry.py    # Danh sách thuật toán dùng chung cho UI và benchmark
 ├── generator.py       # Sinh puzzle ngẫu nhiên có lời giải
 ├── main.py            # Giao diện Pygame, phát lại tìm kiếm và lời giải
-├── benchmark.py       # Đo thuật toán đã chọn trên 4 puzzle
+├── benchmark.py       # Đo thuật toán đã chọn trên 5 puzzle
 ├── docs/adding_dfs.md # Hướng dẫn triển khai, kiểm thử và ghép DFS
-├── puzzles/           # Puzzle mẫu 3x3 đến 6x6
+├── puzzles/           # Puzzle mẫu 3x3, 4x4, 5x5, 6x6 và 7x7
 ├── tests/             # Kiểm tra thuật toán và điều khiển UI
 ├── report/            # Báo cáo cục bộ, được loại khỏi Git
 └── requirements.txt
@@ -51,7 +51,8 @@ UI gọi thuật toán qua `run_search()`, benchmark lấy solver từ `search/r
 
 | Phím | Chức năng |
 |------|-----------|
-| `1` / `2` / `3` / `4` | Chọn puzzle Tiny, Easy, Medium hoặc Hard |
+| `1` / `2` / `3` / `4` | Chọn lưới 3×3, 4×4, 5×5 hoặc 6×6 |
+| `5` | Chọn lưới lớn 7×7 |
 | `N` | Tao layout ngau nhien va seed moi cho puzzle dang chon |
 | `M` | Chuyển Dense / Sparse: nhiều nhánh-vòng hoặc mạng thưa dạng cây |
 | `T` | Toggle Midnight / Aurora palette |
@@ -88,6 +89,8 @@ python -B -m unittest discover -s tests -v
 ## Random puzzles
 
 Every launch, size change, or press of `N` creates a new random seed and layout. The generator builds a connected network with branches and loops from a fixed source in the center, then scrambles a bounded number of tiles. Sparse mode keeps every cell occupied by a pipe, omits loops, and chooses rotations that break the most existing connections. It changes about a third of the tiles (at least four on small boards), leaving fewer matching connections at the start without adding empty cells. Press `M` to switch between Sparse and Dense. The source is the only fixed tile; every other non-cross tile can rotate. Cross pipes are skipped because rotating them does not change their connections.
+
+Five grid sizes are available: 3×3, 4×4, 5×5, 6×6 and 7×7. Tiles and source/lock badges scale to keep the entire board visible. Larger generated networks can reach the search limit before Greedy finds a solution; the UI keeps the recorded search steps for review. The JSON fixtures used by the command-line benchmark contain perimeter networks with locked empty interiors, so their difficulty differs from full generated boards.
 
 Each scramble starts from a valid solution, so Greedy Best-First Search always has a solution path.
 

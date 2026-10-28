@@ -276,4 +276,8 @@ if __name__ == "__main__":
         puzzle, solved = make_random_puzzle(rows, cols, seed=seed)
         print(f"{name}: h0={puzzle.heuristic(puzzle.initial_state())} solved={puzzle.is_goal(solved)}")
         save_puzzle(puzzle, f"puzzles/{name}.json")
+    # Match the perimeter-only sample inputs used for size comparisons.
+    puzzle, solved = make_loop_puzzle(7, 7, seed=42)
+    print(f"large_7x7: h0={puzzle.heuristic(puzzle.initial_state())} solved={puzzle.is_goal(solved)}")
+    save_puzzle(puzzle, "puzzles/large_7x7.json")
     print("Saved to puzzles/")
