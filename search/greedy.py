@@ -4,83 +4,13 @@ from __future__ import annotations
 import heapq
 import time
 import tracemalloc
-from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional
 
 from puzzle import PipesPuzzle
-
-State = Tuple[int, ...]
-ParentMap = Dict[State, Tuple[Optional[State], str]]
-ProgressCallback = Callable[[State, int, int, int], None]
-CancelCheck = Callable[[], bool]
-
-
-@dataclass(frozen=True, slots=True)
-class SearchCandidate:
-    action: str
-    heuristic: Optional[int]
-    duplicate: bool
-    node_id: int
-
-
-@dataclass(frozen=True, slots=True)
-class FrontierEntry:
-    node_id: int
-    action: str
-    heuristic: int
-    depth: int
-
-
-@dataclass(frozen=True, slots=True)
-class SearchTraceStep:
-    number: int
-    node_id: int
-    parent_id: Optional[int]
-    state: State
-    parent_state: Optional[State]
-    action: str
-    heuristic: int
-    depth: int
-    frontier_before: int
-    frontier_after: int
-    generated: int
-    max_frontier: int
-    candidates: tuple[SearchCandidate, ...]
-    frontier_preview: tuple[FrontierEntry, ...]
-    is_goal: bool
-
-
-TraceCallback = Callable[[SearchTraceStep], None]
-
-
-@dataclass
-class SearchResult:
-    algorithm: str
-    found: bool
-    path: List[State]
-    actions: List[str]
-    nodes_expanded: int
-    nodes_generated: int
-    max_frontier: int
-    time_sec: float
-    peak_memory_kb: float
-    depth: int = 0
-    termination_reason: str = "solved"
-
-
-def reconstruct_path(parents: ParentMap, goal: State, start: Optional[State] = None) -> tuple[List[State], List[str]]:
-    path: List[State] = []
-    actions: List[str] = []
-    current: Optional[State] = goal
-    while current is not None:
-        path.append(current)
-        parent, action = parents[current]
-        if parent is not None:
-            actions.append(action)
-        current = parent
-    path.reverse()
-    actions.reverse()
-    return path, actions
+from .common import (
+    CancelCheck, FrontierEntry, ParentMap, ProgressCallback, SearchCandidate,
+    SearchResult, SearchTraceStep, State, TraceCallback, reconstruct_path,
+)
 
 
 def greedy_best_first(

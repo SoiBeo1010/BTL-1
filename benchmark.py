@@ -1,11 +1,14 @@
-"""Benchmark Greedy Best-First Search on the sample puzzles."""
+"""Benchmark a registered search algorithm on the sample puzzles."""
+import argparse
 import csv
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from puzzle import PipesPuzzle
-from search import greedy_best_first
+from search import ALGORITHMS, get_algorithm
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 PUZZLES = [
     "puzzles/tiny_3x3.json",
@@ -15,14 +18,15 @@ PUZZLES = [
 ]
 
 
-def run() -> None:
+def run(algorithm: str = "greedy", max_nodes: int = 500_000, output: str = "benchmark.csv") -> None:
+    selected = get_algorithm(algorithm)
     rows = []
     for path in PUZZLES:
         name = os.path.basename(path).replace(".json", "")
-        puzzle = PipesPuzzle.from_json(path)
-        result = greedy_best_first(puzzle, max_nodes=500_000)
+        puzzle = PipesPuzzle.from_json(os.path.join(BASE_DIR, path))
+        result = selected.solver(puzzle, max_nodes=max_nodes)
         print(
-            f"{name:14s} found={result.found} depth={result.depth} "
+            f"{selected.key:6s} {name:14s} found={result.found} depth={result.depth} "
             f"expanded={result.nodes_expanded} generated={result.nodes_generated} "
             f"frontier={result.max_frontier} time={result.time_sec:.4f}s "
             f"mem={result.peak_memory_kb:.1f}KB"
@@ -30,6 +34,7 @@ def run() -> None:
         rows.append(
             (
                 name,
+                result.algorithm,
                 result.found,
                 result.depth,
                 result.nodes_expanded,
@@ -40,11 +45,12 @@ def run() -> None:
             )
         )
 
-    with open("benchmark.csv", "w", newline="", encoding="utf-8") as file:
+    with open(output, "w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(
             [
                 "puzzle",
+                "algorithm",
                 "found",
                 "depth",
                 "expanded",
@@ -55,8 +61,23 @@ def run() -> None:
             ]
         )
         writer.writerows(rows)
-    print("Saved benchmark.csv")
+    print(f"Saved {output}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--algorithm", choices=ALGORITHMS, default="greedy")
+    parser.add_argument("--max-nodes", type=int, default=500_000)
+    parser.add_argument("--output", default="benchmark.csv")
+    args = parser.parse_args()
+    if args.max_nodes < 1:
+        parser.error("--max-nodes phải lớn hơn 0")
+    try:
+        get_algorithm(args.algorithm)
+    except (ValueError, NotImplementedError) as error:
+        parser.error(str(error))
+    run(args.algorithm, args.max_nodes, args.output)
 
 
 if __name__ == "__main__":
-    run()
+    main()

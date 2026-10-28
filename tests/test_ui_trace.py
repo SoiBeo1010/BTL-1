@@ -1,6 +1,7 @@
 import os
 import time
 import unittest
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -10,7 +11,7 @@ import pygame
 
 from generator import make_random_puzzle
 from main import App
-from search import greedy_best_first
+from search import ALGORITHMS, SearchAlgorithm, greedy_best_first
 
 
 class TraceUITests(unittest.TestCase):
@@ -131,6 +132,42 @@ class TraceUITests(unittest.TestCase):
             app.draw()
             self.assertLess(app.grid_top + app.board_size, app.board_top + 605)
             self.assertGreaterEqual(app.grid_top - 20, app.board_top + 72 + app.font_tiny.get_linesize())
+
+    def test_algorithm_buttons_dispatch_solver_and_restore_start_when_switching(self):
+        app = self.app
+        start = app.state
+        solver = Mock(wraps=greedy_best_first)
+        probe = SearchAlgorithm("probe", "Probe", solver, uses_heuristic=False)
+        with patch.dict(ALGORITHMS, {"probe": probe}):
+            app.draw()
+            app.handle_click(app.algorithm_buttons["probe"].center)
+            self.assertEqual(app.algorithm.key, "probe")
+            app.handle_click(app.action_buttons["run"].center)
+            self.finish_worker()
+            solver.assert_called_once()
+            self.assertEqual(solver.call_args.kwargs["start_state"], start)
+            self.assertTrue(app.search_result.found)
+            app.draw()
+            app.select_step(len(app.trace_steps) - 1)
+            self.assertTrue(app.solved)
+            app.select_algorithm("greedy")
+        self.assertEqual(app.state, start)
+        self.assertEqual(app.trace_steps, [])
+        self.assertIsNone(app.search_result)
+        self.assertEqual(app.algorithm.key, "greedy")
+
+    def test_unavailable_algorithm_button_keeps_current_search(self):
+        app = self.app
+        pending = SearchAlgorithm("pending", "Pending", Mock(), available=False)
+        with patch.dict(ALGORITHMS, {"pending": pending}):
+            app.run_search()
+            self.finish_worker()
+            result = app.search_result
+            app.draw()
+            app.handle_click(app.algorithm_buttons["pending"].center)
+        self.assertEqual(app.algorithm.key, "greedy")
+        self.assertIs(app.search_result, result)
+        pending.solver.assert_not_called()
 
 
 if __name__ == "__main__":

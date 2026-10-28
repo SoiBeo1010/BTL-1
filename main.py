@@ -1,4 +1,4 @@
-"""Pipes Puzzle dashboard powered by Greedy Best-First Search."""
+"""Pipes Puzzle dashboard with interchangeable search algorithms."""
 from __future__ import annotations
 
 import json
@@ -17,7 +17,7 @@ sys.path.insert(0, BASE_DIR)
 
 from generator import make_random_puzzle
 from puzzle import PipesPuzzle
-from search import SearchResult, SearchTraceStep, greedy_best_first
+from search import ALGORITHMS, SearchAlgorithm, SearchResult, SearchTraceStep, get_algorithm
 
 BOARD_W = 560
 HEADER_H = 164
@@ -42,7 +42,8 @@ THEME_DARK = {
     "card_alt": (28, 44, 70),
     "cell": (30, 48, 75),
     "cell_hover": (48, 69, 103),
-    "cell_locked": (39, 47, 68),
+    "cell_locked": (65, 43, 38),
+    "locked": (255, 173, 116),
     "border": (49, 71, 104),
     "text": (236, 243, 255),
     "muted": (145, 162, 190),
@@ -70,6 +71,7 @@ THEME_AURORA = {
     "card_alt": (40, 46, 88),
     "cell": (37, 48, 88),
     "cell_hover": (62, 73, 126),
+    "cell_locked": (65, 42, 53),
     "border": (71, 86, 143),
     "accent": (146, 133, 255),
     "accent_dark": (75, 65, 151),
@@ -136,9 +138,10 @@ def cell_is_bad(puzzle: PipesPuzzle, state: tuple[int, ...], idx: int) -> bool:
 
 
 class App:
-    def __init__(self) -> None:
+    def __init__(self, algorithm: str = "greedy") -> None:
+        self.algorithm = get_algorithm(algorithm)
         pygame.init()
-        pygame.display.set_caption("Pipes Puzzle | Greedy Best-First Search")
+        pygame.display.set_caption(f"Pipes Puzzle | {self.algorithm.label}")
         self.font = pygame.font.SysFont("segoeui", 17)
         self.font_small = pygame.font.SysFont("segoeui", 14)
         self.font_tiny = pygame.font.SysFont("segoeui", 12)
@@ -183,12 +186,13 @@ class App:
         self.live_stats = {"expanded": 0, "generated": 1, "frontier": 1, "max_frontier": 1}
         self.solved = self.puzzle.is_goal(self.state)
         self.status = "SOLVED" if self.solved else "READY"
-        self.status_detail = "T\u1ef1 xoay c\u00e1c \u00f4 ho\u1eb7c nh\u1ea5n G \u0111\u1ec3 Greedy t\u00ecm l\u1eddi gi\u1ea3i."
+        self.status_detail = "Tự xoay các ô hoặc nhấn G để thuật toán đã chọn tìm lời giải."
         self.auto_delay = PLAYBACK_DELAYS[self.speed_index]
         self.last_step_time = time.perf_counter()
 
         self.puzzle_buttons: dict[str, pygame.Rect] = {}
         self.header_buttons: dict[str, pygame.Rect] = {}
+        self.algorithm_buttons: dict[str, pygame.Rect] = {}
         self.action_buttons: dict[str, pygame.Rect] = {}
         self._resize()
         self.clock = pygame.time.Clock()
@@ -249,8 +253,24 @@ class App:
         self.previous_state = None
         self.solved = self.puzzle.is_goal(self.state)
         self.status = "SOLVED" if self.solved else "READY"
-        self.status_detail = "T\u1ef1 xoay c\u00e1c \u00f4 ho\u1eb7c nh\u1ea5n G \u0111\u1ec3 Greedy t\u00ecm l\u1eddi gi\u1ea3i."
+        self.status_detail = "Tự xoay các ô hoặc nhấn G để thuật toán đã chọn tìm lời giải."
         self._resize()
+
+    def select_algorithm(self, key: str) -> None:
+        if self.search_computing or (self.search_worker is not None and self.search_worker.is_alive()):
+            return
+        algorithm = get_algorithm(key)
+        if algorithm.key == self.algorithm.key:
+            return
+        start_state = self.search_start_state if self.trace_steps or self.search_path else self.state
+        self._invalidate_search()
+        self.algorithm = algorithm
+        self.state = start_state
+        self.previous_state = None
+        self.solved = self.puzzle.is_goal(self.state)
+        self.status = "SOLVED" if self.solved else "READY"
+        self.status_detail = f"Đã chọn {algorithm.label}. Nhấn G để tìm lời giải."
+        pygame.display.set_caption(f"Pipes Puzzle | {algorithm.label}")
 
     def new_puzzle(self) -> None:
         """Generate a new solvable network for the selected size and mode."""
@@ -338,8 +358,8 @@ class App:
             "max_frontier": max(self.live_stats.get("max_frontier", 1), frontier),
         }
 
-    def _search_worker(self, token: int, puzzle: PipesPuzzle, start_state: tuple[int, ...]) -> None:
-        result = greedy_best_first(
+    def _search_worker(self, token: int, puzzle: PipesPuzzle, start_state: tuple[int, ...], algorithm: SearchAlgorithm) -> None:
+        result = algorithm.solver(
             puzzle,
             max_nodes=MAX_NODES,
             start_state=start_state,
@@ -366,19 +386,25 @@ class App:
             self.status_detail = "Đã hủy tìm kiếm. Các bước đã ghi vẫn có thể xem lại."
         else:
             self.status = "NO SOLUTION"
-            reason = "Đã chạm giới hạn số trạng thái" if result.termination_reason == "node_limit" else "Đã xét hết hàng đợi"
+            reason = "Đã chạm giới hạn số trạng thái" if result.termination_reason == "node_limit" else "Đã xét hết frontier"
             self.status_detail = f"{reason}; chưa tìm thấy lời giải."
 
     def run_greedy(self) -> None:
+        """Compatibility entry point for callers explicitly requesting Greedy."""
+        self.run_search("greedy")
+
+    def run_search(self, algorithm: Optional[str] = None) -> None:
         if self.search_computing or (self.search_worker is not None and self.search_worker.is_alive()):
             return
+        selected = get_algorithm(algorithm or self.algorithm.key)
+        self.select_algorithm(selected.key)
         start_state = self.search_start_state if self.trace_steps or self.search_path else self.state
         self._clear_search()
         self.state = start_state
         self.previous_state = None
         self.search_start_state = start_state
         self.status = "SEARCHING"
-        self.status_detail = "Đang ghi các bước chọn trạng thái, sinh nhánh và cập nhật hàng đợi."
+        self.status_detail = f"{selected.label}: đang ghi các bước chọn trạng thái, sinh nhánh và cập nhật frontier."
         self.solved = False
         self.search_paused = True
         self.search_cancel_requested = False
@@ -394,8 +420,8 @@ class App:
         )
         self.search_worker = threading.Thread(
             target=self._search_worker,
-            args=(token, working_puzzle, start_state),
-            name="greedy-search", daemon=True,
+            args=(token, working_puzzle, start_state, selected),
+            name=f"{selected.key}-search", daemon=True,
         )
         self.search_worker.start()
 
@@ -442,7 +468,7 @@ class App:
     def step_search(self, direction: int = 1) -> None:
         if not self.playback_length:
             if not self.search_computing:
-                self.run_greedy()
+                self.run_search()
             return
         self.select_step(self.playback_index + direction)
 
@@ -548,6 +574,13 @@ class App:
         pygame.draw.rect(self.screen, COLORS["card"], rect, border_radius=18)
         pygame.draw.rect(self.screen, COLORS["border"], rect, width=1, border_radius=18)
 
+    def draw_lock(self, position: tuple[int, int]) -> None:
+        x, y = position
+        pygame.draw.rect(self.screen, COLORS["locked"], (x + 3, y, 8, 11), width=2, border_radius=4)
+        pygame.draw.rect(self.screen, COLORS["locked"], (x, y + 6, 14, 10), border_radius=3)
+        pygame.draw.circle(self.screen, COLORS["cell_locked"], (x + 7, y + 10), 2)
+        pygame.draw.line(self.screen, COLORS["cell_locked"], (x + 7, y + 10), (x + 7, y + 13), 2)
+
     def draw(self) -> None:
         self.screen.fill(COLORS["bg"])
         self.draw_header()
@@ -564,8 +597,17 @@ class App:
         self.draw_text("PIPES", (BOARD_MARGIN, 18), COLORS["text"], self.font_title)
         badge = pygame.Rect(174, 30, 142, 31)
         pygame.draw.rect(self.screen, COLORS["card_alt"], badge, border_radius=9)
-        self.draw_text("GREEDY SEARCH", (badge.x + 19, badge.y + 8), COLORS["accent"], self.font_tiny)
-        self.draw_text("Theo dõi cách Greedy chọn trạng thái và tìm lời giải.", (BOARD_MARGIN + 2, 66), COLORS["muted"], self.font_small)
+        self.draw_text(f"{self.algorithm.key.upper()} SEARCH", (badge.x + 19, badge.y + 8), COLORS["accent"], self.font_tiny)
+        self.draw_text("Theo dõi cách AI chọn trạng thái và tìm lời giải.", (BOARD_MARGIN + 2, 66), COLORS["muted"], self.font_small)
+
+        self.algorithm_buttons = {}
+        switching_disabled = self.search_computing or (self.search_worker is not None and self.search_worker.is_alive())
+        for index, algorithm in enumerate(ALGORITHMS.values()):
+            rect = pygame.Rect(344 + index * 154, 27, 144, 35)
+            self.algorithm_buttons[algorithm.key] = rect
+            label = algorithm.key.upper() if algorithm.available else f"{algorithm.key.upper()} (sắp có)"
+            self.draw_button(rect, label, primary=algorithm.key == self.algorithm.key,
+                             disabled=not algorithm.available or switching_disabled)
 
         self.header_buttons = {}
         new_rect = pygame.Rect(self.screen.get_width() - 334, 27, 150, 45)
@@ -623,6 +665,8 @@ class App:
         if self.trace_steps or self.search_path:
             caption = f"Đang xét node #{self.current_trace.node_id}" if self.view_mode == "trace" and self.current_trace else f"Lời giải · lần xoay {self.search_step}"
             self.draw_text(caption, (BOARD_MARGIN + 14, self.board_top + 72), COLORS["accent"], self.font_tiny)
+        self.draw_lock((board_rect.right - 172, self.board_top + 71))
+        self.draw_text("Khóa: không thể xoay", (board_rect.right - 152, self.board_top + 71), COLORS["locked"], self.font_tiny)
         for col in range(self.puzzle.cols):
             self.draw_text(str(col + 1), (grid_left + col * cell_size + cell_size // 2 - 4, grid_top - 20), COLORS["faint"], self.font_tiny)
         for row in range(self.puzzle.rows):
@@ -639,6 +683,7 @@ class App:
             if 0 <= hover_row < self.puzzle.rows and 0 <= hover_col < self.puzzle.cols:
                 hovered_idx = self.puzzle.idx(hover_row, hover_col)
         cell_markers = []
+        fixed_cells = {idx for idx, cell in enumerate(self.puzzle.cells) if cell.locked or cell.type in ("EMPTY", "CROSS")}
         for row in range(self.puzzle.rows):
             for col in range(self.puzzle.cols):
                 idx = self.puzzle.idx(row, col)
@@ -650,12 +695,23 @@ class App:
                 bad = cell_is_bad(self.puzzle, self.state, idx)
                 type_color = COLORS[PIPE_STYLES.get(cell.type, ("", "faint"))[1]]
                 tint = type_color if bad else COLORS["pipe"]
-                fill = mix_color(COLORS["board"], tint, 0.14)
-                if idx in changed or hovered_idx == idx:
+                fixed = idx in fixed_cells
+                fill = COLORS["cell_locked"] if fixed else mix_color(COLORS["board"], tint, 0.14)
+                if not fixed and (idx in changed or hovered_idx == idx):
                     fill = mix_color(fill, tint, 0.12)
-                border = mix_color(fill, tint, 0.22)
+                border = COLORS["locked"] if fixed else mix_color(fill, tint, 0.22)
                 pygame.draw.rect(self.screen, fill, rect, border_radius=12)
-                pygame.draw.rect(self.screen, border, rect, width=1, border_radius=12)
+                if fixed:
+                    # Keep the hatch behind the pipes and inside the rounded tile.
+                    hatch_rect = rect.inflate(-12, -12)
+                    previous_clip = self.screen.get_clip()
+                    self.screen.set_clip(previous_clip.clip(hatch_rect))
+                    for offset in range(-hatch_rect.height, hatch_rect.width, 12):
+                        start = (hatch_rect.left + offset, hatch_rect.bottom)
+                        end = (start[0] + hatch_rect.height, hatch_rect.top)
+                        pygame.draw.line(self.screen, mix_color(fill, border, 0.13), start, end)
+                    self.screen.set_clip(previous_clip)
+                pygame.draw.rect(self.screen, border, rect, width=2 if fixed else 1, border_radius=12)
                 if idx in changed:
                     pygame.draw.rect(self.screen, COLORS["yellow"], rect, width=2, border_radius=12)
                 cell_markers.append((idx, rect, bad))
@@ -666,15 +722,16 @@ class App:
             if bad:
                 cx, cy = rect.right - 10, rect.top + 10
                 pygame.draw.polygon(self.screen, COLORS["pipe_open"], [(cx, cy - 3), (cx + 3, cy), (cx, cy + 3), (cx - 3, cy)])
+            if idx in fixed_cells:
+                badge = pygame.Rect(rect.left + 5, rect.top + 5, 22, 24)
+                pygame.draw.rect(self.screen, COLORS["cell_locked"], badge, border_radius=5)
+                pygame.draw.rect(self.screen, COLORS["locked"], badge, width=1, border_radius=5)
+                self.draw_lock((badge.left + 4, badge.top + 4))
             if idx == self.puzzle.root_index:
-                badge = pygame.Rect(rect.left + 5, rect.top + 4, 17, 17)
+                badge = pygame.Rect(rect.left + 5, rect.bottom - 22, 17, 17)
                 pygame.draw.rect(self.screen, COLORS["accent_dark"], badge, border_radius=5)
                 label = self.font_tiny.render("G", True, COLORS["source"])
                 self.screen.blit(label, label.get_rect(center=badge.center))
-            elif self.puzzle.cells[idx].locked:
-                lock = pygame.Rect(rect.left + 8, rect.top + 11, 7, 6)
-                pygame.draw.rect(self.screen, COLORS["faint"], lock, border_radius=1)
-                pygame.draw.arc(self.screen, COLORS["faint"], (lock.x + 1, lock.y - 5, 5, 8), 0, 3.14159, 1)
 
         legend_y = board_rect.bottom - 45
         legend_width = (BOARD_W - 40) // len(PIPE_STYLES)
@@ -682,7 +739,7 @@ class App:
             x = BOARD_MARGIN + 20 + index * legend_width
             pygame.draw.circle(self.screen, COLORS[color_key], (x + 4, legend_y + 9), 4)
             self.draw_text(label, (x + 14, legend_y + 1), COLORS["muted"], self.font_tiny)
-        board_control = "R: về chơi thủ công" if self.trace_steps or self.search_path else "Click ô để xoay"
+        board_control = "R: về chơi thủ công" if self.trace_steps or self.search_path else "Click ô không khóa để xoay"
         self.draw_text(f"{board_control}  ·  G: gốc nguồn cố định", (BOARD_MARGIN + 20, legend_y + 23), COLORS["faint"], self.font_tiny)
 
     def draw_pipes(self, connections: list[set[int]]) -> None:
@@ -836,7 +893,9 @@ class App:
         self.draw_heuristic(self.state, x + 22, y + 216)
         parent = f"  ·  từ cha #{step.parent_id}" if step.parent_id is not None else ""
         self.draw_text(self.describe_action(step.action) + parent, (x + 22, y + 239), COLORS["text"], self.font_small)
-        self.draw_text("Đích: không lỗi nối, mọi ống nối về nguồn." if step.is_goal else "h nhỏ nhất; hòa điểm → độ sâu nhỏ hơn → vào hàng đợi trước.", (x + 22, y + 261), COLORS["muted"], self.font_tiny)
+        selection_rule = ("h nhỏ nhất; hòa điểm → độ sâu nhỏ hơn → vào hàng đợi trước."
+                          if self.algorithm.uses_heuristic else "Ngăn xếp LIFO: trạng thái được thêm sau sẽ được xét trước.")
+        self.draw_text("Đích: không lỗi nối, mọi ống nối về nguồn." if step.is_goal else selection_rule, (x + 22, y + 261), COLORS["muted"], self.font_tiny)
 
         new_count = sum(not candidate.duplicate for candidate in step.candidates)
         duplicates = len(step.candidates) - new_count
@@ -844,7 +903,8 @@ class App:
         self.draw_text("PHÉP XOAY", (x + 28, y + 315), COLORS["faint"], self.font_tiny)
         self.draw_text("h(n) / Δh", (x + 281, y + 315), COLORS["faint"], self.font_tiny)
         self.draw_text("XỬ LÝ", (x + 389, y + 315), COLORS["faint"], self.font_tiny)
-        candidates = sorted(step.candidates, key=lambda item: (item.duplicate, item.heuristic if item.heuristic is not None else 0, item.node_id))
+        candidates = (sorted(step.candidates, key=lambda item: (item.duplicate, item.heuristic if item.heuristic is not None else 0, item.node_id))
+                      if self.algorithm.uses_heuristic else list(step.candidates))
         self.candidate_scroll = max(0, min(self.candidate_scroll, max(0, len(candidates) - 4)))
         self.candidate_rect = pygame.Rect(x + 20, y + 333, width, 108)
         next_id = step.frontier_preview[0].node_id if step.frontier_preview else None
@@ -861,16 +921,19 @@ class App:
         if not candidates:
             self.draw_text("Đã đạt đích; không sinh thêm nhánh.", (x + 28, y + 349), COLORS["green"], self.font_small)
         elif len(candidates) > 4:
-            self.draw_text(f"Cuộn trong bảng để xem đủ {len(candidates)} phép xoay · xếp theo h(n)", (x + 20, y + 443), COLORS["faint"], self.font_tiny)
+            order = "xếp theo h(n)" if self.algorithm.uses_heuristic else "thứ tự sinh nhánh"
+            self.draw_text(f"Cuộn trong bảng để xem đủ {len(candidates)} phép xoay · {order}", (x + 20, y + 443), COLORS["faint"], self.font_tiny)
 
-        self.draw_text(f"HÀNG ĐỢI  ·  {step.frontier_before:,} → {step.frontier_after:,} trạng thái", (x + 20, y + 466), COLORS["text"], self.font_small)
+        frontier_name = "HÀNG ĐỢI" if self.algorithm.uses_heuristic else "NGĂN XẾP"
+        self.draw_text(f"{frontier_name}  ·  {step.frontier_before:,} → {step.frontier_after:,} trạng thái", (x + 20, y + 466), COLORS["text"], self.font_small)
         for index, entry in enumerate(step.frontier_preview):
             rect = pygame.Rect(x + 20 + index * 103, y + 490, 98, 36)
             pygame.draw.rect(self.screen, COLORS["accent_dark"] if index == 0 else COLORS["card_alt"], rect, border_radius=7)
             color = COLORS["green"] if index == 0 else COLORS["muted"]
             self.draw_text(f"#{entry.node_id}", (rect.x + 6, rect.y + 2), color, self.font_tiny)
             self.draw_text(f"h={entry.heuristic} · sâu {entry.depth}", (rect.x + 6, rect.y + 18), color, self.font_tiny)
-        next_text = "Đã gặp trạng thái đích; dừng tìm kiếm." if step.is_goal else "Xét tiếp: " + (f"#{next_id} (ô đầu) · ưu tiên theo h, độ sâu, thứ tự thêm." if next_id is not None else "Hàng đợi rỗng.")
+        next_rule = "ưu tiên theo h, độ sâu, thứ tự thêm" if self.algorithm.uses_heuristic else "đỉnh ngăn xếp LIFO"
+        next_text = "Đã gặp trạng thái đích; dừng tìm kiếm." if step.is_goal else "Xét tiếp: " + (f"#{next_id} (ô đầu) · {next_rule}." if next_id is not None else "Frontier rỗng.")
         self.draw_text(next_text, (x + 20, y + 529), COLORS["muted"], self.font_tiny)
         self.draw_text(f"Tại bước này: đã tạo {step.generated:,}  ·  frontier lớn nhất {step.max_frontier:,}", (x + 20, y + 549), COLORS["muted"], self.font_tiny)
         result = self.search_result
@@ -916,6 +979,11 @@ class App:
         self.draw_text(footer, (BOARD_MARGIN, y), COLORS["faint"], self.font_tiny)
 
     def handle_click(self, position: tuple[int, int]) -> None:
+        for key, rect in self.algorithm_buttons.items():
+            if rect.collidepoint(position):
+                if ALGORITHMS[key].available:
+                    self.select_algorithm(key)
+                return
         for mode, rect in self.inspector_buttons.items():
             if rect.collidepoint(position):
                 self.set_view(mode)
@@ -940,7 +1008,7 @@ class App:
         elif self.header_buttons.get("theme", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
             self.toggle_theme()
         elif self.action_buttons.get("run", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
-            self.run_greedy()
+            self.run_search()
         elif self.action_buttons.get("step", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
             self.step_search()
         elif self.action_buttons.get("back", pygame.Rect(0, 0, 0, 0)).collidepoint(position):
@@ -974,7 +1042,7 @@ class App:
                     elif event.key == pygame.K_m:
                         self.toggle_mode()
                     elif event.key == pygame.K_g:
-                        self.run_greedy()
+                        self.run_search()
                     elif event.key == pygame.K_s:
                         self.step_search()
                     elif event.key == pygame.K_RIGHT:
