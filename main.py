@@ -388,10 +388,12 @@ class App:
         elif result.termination_reason == "cancelled":
             self.status = "CANCELLED"
             self.status_detail = "Đã hủy tìm kiếm. Các bước đã ghi vẫn có thể xem lại."
+        elif result.termination_reason == "node_limit":
+            self.status = "CHẠM GIỚI HẠN"
+            self.status_detail = "CHẠM GIỚI HẠN số trạng thái: chưa tìm thấy lời giải; chưa thể kết luận bài toán vô nghiệm."
         else:
             self.status = "NO SOLUTION"
-            reason = "Đã chạm giới hạn số trạng thái" if result.termination_reason == "node_limit" else "Đã xét hết frontier"
-            self.status_detail = f"{reason}; chưa tìm thấy lời giải."
+            self.status_detail = "Đã xét hết frontier; chưa tìm thấy lời giải."
 
     def run_greedy(self) -> None:
         """Compatibility entry point for callers explicitly requesting Greedy."""
@@ -610,7 +612,10 @@ class App:
         badge = pygame.Rect(174, 30, 142, 31)
         pygame.draw.rect(self.screen, COLORS["card_alt"], badge, border_radius=9)
         self.draw_text(f"{self.algorithm.key.upper()} SEARCH", (badge.x + 19, badge.y + 8), COLORS["accent"], self.font_tiny)
-        self.draw_text("Theo dõi cách AI chọn trạng thái và tìm lời giải.", (BOARD_MARGIN + 2, 66), COLORS["muted"], self.font_small)
+        search_hint = ("Theo dõi cách AI chọn trạng thái và tìm lời giải."
+                       if self.algorithm.uses_heuristic else
+                       "DFS chọn theo LIFO; h(n) chỉ tham khảo, không dùng để chọn node.")
+        self.draw_text(search_hint, (BOARD_MARGIN + 2, 66), COLORS["muted"], self.font_small)
 
         self.algorithm_buttons = {}
         switching_disabled = self.search_computing or (self.search_worker is not None and self.search_worker.is_alive())
@@ -973,7 +978,11 @@ class App:
     def draw_heuristic(self, state: tuple[int, ...], x: int, y: int) -> None:
         mismatches = self.puzzle.count_mismatches(state)
         connected, active = self.puzzle._connectivity_stats(state)
-        self.draw_text(f"h(n) = {mismatches} điểm lỗi nối + {active - connected} ô chưa nối nguồn = {mismatches + active - connected}", (x, y), COLORS["yellow"], self.font_small)
+        if self.algorithm.uses_heuristic:
+            label = f"h(n) = {mismatches} điểm lỗi nối + {active - connected} ô chưa nối nguồn = {mismatches + active - connected}"
+        else:
+            label = f"h(n) tham khảo = {mismatches} lỗi nối + {active - connected} ô chưa nối = {mismatches + active - connected}"
+        self.draw_text(label, (x, y), COLORS["yellow"], self.font_small)
 
     def draw_solution_details(self, x: int, y: int) -> None:
         self.draw_text("ĐƯỜNG ĐI TỪ BAN ĐẦU ĐẾN ĐÍCH", (x + 20, y + 192), COLORS["accent"], self.font_bold)
