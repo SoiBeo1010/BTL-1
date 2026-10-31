@@ -1,0 +1,16 @@
+﻿Kích thước,Lượt,Seed,File puzzle,Kết quả,Expanded states,Generated states,Solution depth,Maximum frontier size,Thời gian (ms),Bộ nhớ (KiB)
+3x3,1,42,puzzle_3x3_run1_seed42.json,Đạt,5,86,4,82,25.74,44.8
+3x3,2,123,puzzle_3x3_run2_seed123.json,Đạt,15,269,6,255,72.97,105.2
+3x3,3,999,puzzle_3x3_run3_seed999.json,Đạt,6,106,5,101,30.64,50.3
+4x4,1,42,puzzle_4x4_run1_seed42.json,Đạt,6,211,5,206,106.20,100.8
+4x4,2,123,puzzle_4x4_run2_seed123.json,Đạt,6,211,5,206,116.18,100.8
+4x4,3,999,puzzle_4x4_run3_seed999.json,Đạt,6,211,5,206,115.05,100.8
+5x5,1,42,puzzle_5x5_run1_seed42.json,Đạt,9,550,8,542,433.53,308.9
+5x5,2,123,puzzle_5x5_run2_seed123.json,Đạt,9,550,8,542,439.13,309.8
+5x5,3,999,puzzle_5x5_run3_seed999.json,Đạt,9,550,8,542,453.78,309.7
+6x6,1,42,puzzle_6x6_run1_seed42.json,Đạt,13,1218,12,1206,1451.25,745.0
+6x6,2,123,puzzle_6x6_run2_seed123.json,Đạt,13,1218,12,1206,1406.04,745.9
+6x6,3,999,puzzle_6x6_run3_seed999.json,Đạt,13,1218,12,1206,1417.85,745.9
+7x7,1,42,puzzle_7x7_run1_seed42.json,Đạt,17,2246,16,2230,3570.87,1685.6
+7x7,2,123,puzzle_7x7_run2_seed123.json,Đạt,17,2246,16,2230,3701.20,1685.6
+7x7,3,999,puzzle_7x7_run3_seed999.json,Đạt,17,2246,16,2230,3577.41,1685.6
