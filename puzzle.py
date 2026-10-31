@@ -55,6 +55,18 @@ class PipesPuzzle:
             raise ValueError("root_index must point to a cell in the puzzle")
         self.root_index = root_index
 
+    @property
+    def row(self) -> int:
+        return self.rows
+
+    @property
+    def column(self) -> int:
+        return self.cols
+
+    @property
+    def collumn(self) -> int:
+        return self.cols
+
     def idx(self, r, c): return r*self.cols + c
     def rc(self, idx): return divmod(idx, self.cols)
 

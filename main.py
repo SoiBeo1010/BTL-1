@@ -363,9 +363,11 @@ class App:
         }
 
     def _search_worker(self, token: int, puzzle: PipesPuzzle, start_state: tuple[int, ...], algorithm: SearchAlgorithm) -> None:
+        max_depth = (puzzle.rows * puzzle.cols - 1) * 1.5
         result = algorithm.solver(
             puzzle,
             max_nodes=MAX_NODES,
+            max_depth=max_depth,
             start_state=start_state,
             progress_callback=lambda state, expanded, generated, frontier: self._on_search_progress(
                 token, state, expanded, generated, frontier

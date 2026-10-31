@@ -1,0 +1,52 @@
+{
+  "rows": 3,
+  "cols": 3,
+  "root": 4,
+  "cells": [
+    {
+      "type": "ELBOW",
+      "rotation": 3,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 0,
+      "locked": false
+    },
+    {
+      "type": "END",
+      "rotation": 2,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 0,
+      "locked": false
+    },
+    {
+      "type": "END",
+      "rotation": 0,
+      "locked": true
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 1,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 2,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 1,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 3,
+      "locked": false
+    }
+  ]
+}

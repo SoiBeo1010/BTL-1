@@ -1,0 +1,87 @@
+{
+  "rows": 4,
+  "cols": 4,
+  "root": 10,
+  "cells": [
+    {
+      "type": "END",
+      "rotation": 2,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 3,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 1,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 0,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 1,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 0,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 1,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 3,
+      "locked": false
+    },
+    {
+      "type": "TEE",
+      "rotation": 0,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 3,
+      "locked": false
+    },
+    {
+      "type": "END",
+      "rotation": 0,
+      "locked": true
+    },
+    {
+      "type": "END",
+      "rotation": 2,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 0,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 2,
+      "locked": false
+    },
+    {
+      "type": "STRAIGHT",
+      "rotation": 1,
+      "locked": false
+    },
+    {
+      "type": "ELBOW",
+      "rotation": 1,
+      "locked": false
+    }
+  ]
+}
