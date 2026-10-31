@@ -22,6 +22,7 @@ def greedy_best_first(
     cancel_check: Optional[CancelCheck] = None,
     trace_callback: Optional[TraceCallback] = None,
     trace_limit: int = 2_000,
+    max_depth: Optional[int] = None
 ) -> SearchResult:
     """Solve by lowest h(n), optionally recording actual expansion decisions.
 
