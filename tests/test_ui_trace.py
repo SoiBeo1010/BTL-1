@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 import time
 import unittest
 from unittest.mock import Mock, patch
@@ -12,7 +13,7 @@ import pygame
 from generator import make_random_puzzle
 from config import default_max_depth
 from main import App, BOARD_MARGIN, BOARD_W, CARD_H, GRID_AREA_BOTTOM, PUZZLE_SIZES
-from search import ALGORITHMS, SearchAlgorithm, SearchResult, greedy_best_first
+from search import ALGORITHMS, SearchAlgorithm, SearchResult, depth_first_search, greedy_best_first
 
 
 class TraceUITests(unittest.TestCase):
@@ -195,6 +196,41 @@ class TraceUITests(unittest.TestCase):
         self.app._finish_search(SearchResult("Depth-First Search", False, [], [], 1, 1, 1,
                                              0.0, 0.0, -1, "depth_limit"))
         self.assertEqual(self.app.status, "CHẠM GIỚI HẠN")
+
+    def test_empty_rotation_table_distinguishes_depth_cutoff_goal_and_unrecorded_moves(self):
+        app = self.app
+        app.select_algorithm("dfs")
+        trace = []
+        result = depth_first_search(app.puzzle, max_nodes=400, max_depth=14,
+                                    trace_callback=trace.append)
+        cutoff = next(step for step in trace if step.depth_limited)
+        self.assertEqual(cutoff.depth, 14)
+        self.assertFalse(app.puzzle.is_goal(cutoff.state))
+        cases = (
+            (cutoff, "Chạm giới hạn độ sâu 14; dừng nhánh này."),
+            (replace(cutoff, depth_limited=False), "Không có phép xoay được ghi ở bước này."),
+        )
+        for step, expected in cases:
+            with self.subTest(expected=expected):
+                app.trace_steps = [step]
+                app._finish_search(result)
+                app.select_step(0)
+                with patch.object(app, "draw_text", wraps=app.draw_text) as draw_text:
+                    app.draw()
+                messages = [call.args[0] for call in draw_text.call_args_list]
+                self.assertIn(expected, messages)
+                self.assertNotIn("Đã đạt đích; không sinh thêm nhánh.", messages)
+
+        trace = []
+        result = depth_first_search(app.puzzle, start_state=app.solution_state,
+                                    max_depth=0, trace_callback=trace.append)
+        app.trace_steps = trace
+        app._finish_search(result)
+        app.select_step(0)
+        with patch.object(app, "draw_text", wraps=app.draw_text) as draw_text:
+            app.draw()
+        messages = [call.args[0] for call in draw_text.call_args_list]
+        self.assertIn("Đã đạt đích; không sinh thêm nhánh.", messages)
 
 
 if __name__ == "__main__":

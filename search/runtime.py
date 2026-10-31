@@ -67,6 +67,7 @@ def record_trace(
     preview: Iterable[tuple[SearchNode, int]],
     is_goal: bool,
     heuristic: int | None = None,
+    depth_limited: bool = False,
 ) -> None:
     if callback is None:
         return
@@ -82,6 +83,7 @@ def record_trace(
         frontier_preview=tuple(FrontierEntry(queued.node_id, queued.action, h, queued.depth)
                                for queued, h in preview),
         is_goal=is_goal,
+        depth_limited=depth_limited,
     ))
 
 

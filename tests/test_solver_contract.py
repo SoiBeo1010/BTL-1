@@ -83,12 +83,19 @@ class SolverContractTests(unittest.TestCase):
         graph = Graph(goal=2, edges={0: [1], 1: [2]})
         for solver in SOLVERS:
             with self.subTest(solver=solver.__name__):
-                stopped = solver(graph, max_depth=1)
+                trace = []
+                stopped = solver(graph, max_depth=1, trace_callback=trace.append)
                 self.assertFalse(stopped.found)
                 self.assertEqual(stopped.termination_reason, "depth_limit")
-                solved = solver(graph, max_depth=2)
+                self.assertTrue(trace[-1].depth_limited)
+                self.assertFalse(trace[-1].is_goal)
+                self.assertFalse(trace[-1].candidates)
+                trace = []
+                solved = solver(graph, max_depth=2, trace_callback=trace.append)
                 self.assertEqual(solved.depth, 2)
                 self.assertTrue(validate_solution(graph, solved))
+                self.assertTrue(trace[-1].is_goal)
+                self.assertFalse(trace[-1].depth_limited)
                 self.assertEqual(solver(graph, max_depth=0).nodes_generated, 1)
 
     def test_max_depth_reached_is_measured_even_when_solution_is_shallower(self):

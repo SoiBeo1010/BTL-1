@@ -73,12 +73,13 @@ def depth_first_search(
                 progress_callback(node.state, expanded, generated, len(frontier))
 
             is_goal = puzzle.is_goal(node.state)
+            depth_limited = not is_goal and max_depth is not None and node.depth >= max_depth
             capture = trace_callback is not None and (expanded <= trace_limit or is_goal)
             candidates = []
             children = []
             if is_goal:
                 goal, reason = node, "solved"
-            elif max_depth is not None and node.depth >= max_depth:
+            elif depth_limited:
                 depth_cutoff = True
             else:
                 for state, action in puzzle.successors(node.state):
@@ -107,7 +108,7 @@ def depth_first_search(
                     max_frontier=max_frontier, frontier_before=frontier_before,
                     frontier_after=len(frontier), candidates=candidates,
                     preview=((queued, puzzle.heuristic(queued.state)) for queued in reversed(frontier[-5:])),
-                    is_goal=is_goal,
+                    is_goal=is_goal, depth_limited=depth_limited,
                 )
             if progress_callback is not None:
                 progress_callback(node.state, expanded, generated, len(frontier))

@@ -51,6 +51,7 @@ class SearchTraceStep:
     candidates: tuple[SearchCandidate, ...]
     frontier_preview: tuple[FrontierEntry, ...]
     is_goal: bool
+    depth_limited: bool = False
 
 
 TraceCallback = Callable[[SearchTraceStep], None]

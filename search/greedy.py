@@ -83,11 +83,12 @@ def greedy_best_first(
                 progress_callback(node.state, expanded, generated, len(frontier))
 
             is_goal = puzzle.is_goal(node.state)
+            depth_limited = not is_goal and max_depth is not None and node.depth >= max_depth
             capture = trace_callback is not None and (expanded <= trace_limit or is_goal)
             candidates = []
             if is_goal:
                 goal, reason = node, "solved"
-            elif max_depth is not None and node.depth >= max_depth:
+            elif depth_limited:
                 depth_cutoff = True
             else:
                 for state, action in puzzle.successors(node.state):
@@ -115,7 +116,7 @@ def greedy_best_first(
                     puzzle, trace_callback, node, expanded=expanded, generated=generated,
                     max_frontier=max_frontier, frontier_before=frontier_before,
                     frontier_after=len(frontier), candidates=candidates, preview=_preview(frontier, discovered),
-                    is_goal=is_goal, heuristic=heuristic,
+                    is_goal=is_goal, heuristic=heuristic, depth_limited=depth_limited,
                 )
             if progress_callback is not None:
                 progress_callback(node.state, expanded, generated, len(frontier))

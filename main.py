@@ -918,7 +918,14 @@ class App:
             label = "Trùng · bỏ qua" if candidate.duplicate else f"Thêm #{candidate.node_id}"
             self.draw_text(label, (x + 389, sy + 5), color, self.font_tiny)
         if not candidates:
-            self.draw_text("Đã đạt đích; không sinh thêm nhánh.", (x + 28, y + 349), COLORS["green"], self.font_small)
+            if step.is_goal:
+                message, color = "Đã đạt đích; không sinh thêm nhánh.", COLORS["green"]
+            elif step.depth_limited:
+                message = f"Chạm giới hạn độ sâu {step.depth}; dừng nhánh này."
+                color = COLORS["yellow"]
+            else:
+                message, color = "Không có phép xoay được ghi ở bước này.", COLORS["muted"]
+            self.draw_text(message, (x + 28, y + 349), color, self.font_small)
         elif len(candidates) > 4:
             order = "xếp theo h(n)" if self.algorithm.uses_heuristic else "thứ tự sinh nhánh"
             self.draw_text(f"Cuộn trong bảng để xem đủ {len(candidates)} phép xoay · {order}", (x + 20, y + 443), COLORS["faint"], self.font_tiny)
