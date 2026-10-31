@@ -77,6 +77,7 @@ class SearchSolver(Protocol):
         self,
         puzzle: PipesPuzzle,
         max_nodes: int = 500_000,
+        max_depth: Optional[int] = None,
         callback: Optional[ExpansionCallback] = None,
         start_state: Optional[State] = None,
         progress_callback: Optional[ProgressCallback] = None,
