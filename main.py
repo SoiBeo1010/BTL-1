@@ -1,22 +1,17 @@
 """Pipes Puzzle dashboard with interchangeable search algorithms."""
 from __future__ import annotations
 
-import json
-import os
 import queue
 import random
-import sys
 import threading
 import time
 from typing import Optional
 
 import pygame
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, BASE_DIR)
-
 from generator import make_random_puzzle
-from puzzle import PipesPuzzle
+from config import DEFAULT_MAX_NODES, DEFAULT_TRACE_LIMIT, PUZZLE_PRESETS, default_max_depth
+from puzzle import DIRS, OPPOSITE, PipesPuzzle
 from search import ALGORITHMS, SearchAlgorithm, SearchResult, SearchTraceStep, get_algorithm
 
 BOARD_W = 560
@@ -26,8 +21,8 @@ CARD_H = 605
 PANEL_W = 552
 GAP = 18
 FPS = 60
-MAX_NODES = 500_000
-MAX_TRACE_STEPS = 2_000
+MAX_NODES = DEFAULT_MAX_NODES
+MAX_TRACE_STEPS = DEFAULT_TRACE_LIMIT
 PLAYBACK_DELAYS = (1.6, 0.8, 0.4, 0.16)
 GRID_AREA_TOP = 112
 GRID_AREA_BOTTOM = 56
@@ -79,36 +74,10 @@ THEME_AURORA = {
 }
 COLORS = dict(THEME_DARK)
 
-PUZZLE_FILES = {
-    "1": os.path.join(BASE_DIR, "puzzles", "tiny_3x3.json"),
-    "2": os.path.join(BASE_DIR, "puzzles", "easy_4x4.json"),
-    "3": os.path.join(BASE_DIR, "puzzles", "medium_5x5.json"),
-    "4": os.path.join(BASE_DIR, "puzzles", "hard_6x6.json"),
-    "5": os.path.join(BASE_DIR, "puzzles", "large_7x7.json"),
-}
-PUZZLE_LABELS = {
-    "1": ("TINY", "3 x 3"),
-    "2": ("EASY", "4 x 4"),
-    "3": ("MEDIUM", "5 x 5"),
-    "4": ("HARD", "6 x 6"),
-    "5": ("LARGE", "7 x 7"),
-}
-PUZZLE_SIZES = {
-    "1": (3, 3),
-    "2": (4, 4),
-    "3": (5, 5),
-    "4": (6, 6),
-    "5": (7, 7),
-}
-PUZZLE_NAMES = {
-    "1": "M\u1ea1ng nh\u1ecf",
-    "2": "M\u1ea1ng c\u01a1 b\u1ea3n",
-    "3": "M\u1ea1ng nhi\u1ec1u nh\u00e1nh",
-    "4": "M\u1ea1ng nhi\u1ec1u v\u00f2ng",
-    "5": "Mạng lớn",
-}
-DIRS = [(-1, 0), (0, 1), (1, 0), (0, -1)]
-OPPOSITE = [2, 3, 0, 1]
+PUZZLE_FILES = {preset.key: str(preset.path) for preset in PUZZLE_PRESETS}
+PUZZLE_LABELS = {preset.key: (preset.label, f"{preset.size} x {preset.size}") for preset in PUZZLE_PRESETS}
+PUZZLE_SIZES = {preset.key: (preset.size, preset.size) for preset in PUZZLE_PRESETS}
+PUZZLE_NAMES = {preset.key: preset.description for preset in PUZZLE_PRESETS}
 PIPE_STYLES = {
     "END": ("Đầu bịt", "pipe_end"),
     "STRAIGHT": ("Thẳng", "pipe_straight"),
@@ -123,8 +92,7 @@ def mix_color(base: tuple[int, ...], tint: tuple[int, ...], amount: float) -> tu
 
 
 def load_puzzle(path: str) -> PipesPuzzle:
-    with open(path, "r", encoding="utf-8") as file:
-        return PipesPuzzle.from_dict(json.load(file))
+    return PipesPuzzle.from_json(path)
 
 
 def cell_is_bad(puzzle: PipesPuzzle, state: tuple[int, ...], idx: int) -> bool:
@@ -363,7 +331,7 @@ class App:
         }
 
     def _search_worker(self, token: int, puzzle: PipesPuzzle, start_state: tuple[int, ...], algorithm: SearchAlgorithm) -> None:
-        max_depth = (puzzle.rows * puzzle.cols - 1) * 1.5
+        max_depth = default_max_depth(puzzle.rows, puzzle.cols) if algorithm.key == "dfs" else None
         result = algorithm.solver(
             puzzle,
             max_nodes=MAX_NODES,
@@ -393,6 +361,9 @@ class App:
         elif result.termination_reason == "node_limit":
             self.status = "CHẠM GIỚI HẠN"
             self.status_detail = "CHẠM GIỚI HẠN số trạng thái: chưa tìm thấy lời giải; chưa thể kết luận bài toán vô nghiệm."
+        elif result.termination_reason == "depth_limit":
+            self.status = "CHẠM GIỚI HẠN"
+            self.status_detail = "Đã chạm giới hạn độ sâu; chưa thể kết luận bài toán vô nghiệm."
         else:
             self.status = "NO SOLUTION"
             self.status_detail = "Đã xét hết frontier; chưa tìm thấy lời giải."

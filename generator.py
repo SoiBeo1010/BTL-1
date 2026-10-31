@@ -6,11 +6,7 @@ import os
 import random
 from typing import Iterable
 
-from puzzle import Cell, PipesPuzzle, rotated_connections
-
-
-DIRECTIONS = [(-1, 0), (0, 1), (1, 0), (0, -1)]
-OPPOSITE = [2, 3, 0, 1]
+from puzzle import DIRS as DIRECTIONS, OPPOSITE, Cell, PipesPuzzle, rotated_connections
 
 
 def _neighbours(rows: int, cols: int, index: int) -> Iterable[tuple[int, int]]:
@@ -256,17 +252,8 @@ def make_loop_puzzle(rows: int, cols: int, seed: int | None = None):
 
 
 def save_puzzle(puzzle: PipesPuzzle, path: str) -> None:
-    data = {
-        "rows": puzzle.rows,
-        "cols": puzzle.cols,
-        "root": puzzle.root_index,
-        "cells": [
-            {"type": cell.type, "rotation": rotation, "locked": cell.locked}
-            for cell, rotation in zip(puzzle.cells, puzzle.initial_state())
-        ],
-    }
     with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=2, ensure_ascii=False)
+        json.dump(puzzle.to_dict(), file, indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":

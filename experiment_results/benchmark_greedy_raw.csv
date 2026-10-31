@@ -1,16 +1,76 @@
-﻿Kích thước,Lượt,Seed,File puzzle,Kết quả,Expanded states,Generated states,Solution depth,Maximum frontier size,Thời gian (ms),Bộ nhớ (KiB)
-3x3,1,42,puzzle_3x3_run1_seed42.json,Đạt,5,86,4,82,25.74,44.8
-3x3,2,123,puzzle_3x3_run2_seed123.json,Đạt,15,269,6,255,72.97,105.2
-3x3,3,999,puzzle_3x3_run3_seed999.json,Đạt,6,106,5,101,30.64,50.3
-4x4,1,42,puzzle_4x4_run1_seed42.json,Đạt,6,211,5,206,106.20,100.8
-4x4,2,123,puzzle_4x4_run2_seed123.json,Đạt,6,211,5,206,116.18,100.8
-4x4,3,999,puzzle_4x4_run3_seed999.json,Đạt,6,211,5,206,115.05,100.8
-5x5,1,42,puzzle_5x5_run1_seed42.json,Đạt,9,550,8,542,433.53,308.9
-5x5,2,123,puzzle_5x5_run2_seed123.json,Đạt,9,550,8,542,439.13,309.8
-5x5,3,999,puzzle_5x5_run3_seed999.json,Đạt,9,550,8,542,453.78,309.7
-6x6,1,42,puzzle_6x6_run1_seed42.json,Đạt,13,1218,12,1206,1451.25,745.0
-6x6,2,123,puzzle_6x6_run2_seed123.json,Đạt,13,1218,12,1206,1406.04,745.9
-6x6,3,999,puzzle_6x6_run3_seed999.json,Đạt,13,1218,12,1206,1417.85,745.9
-7x7,1,42,puzzle_7x7_run1_seed42.json,Đạt,17,2246,16,2230,3570.87,1685.6
-7x7,2,123,puzzle_7x7_run2_seed123.json,Đạt,17,2246,16,2230,3701.20,1685.6
-7x7,3,999,puzzle_7x7_run3_seed999.json,Đạt,17,2246,16,2230,3577.41,1685.6
+﻿size,cols,input_run,seed,puzzle_file,repeat,rotatable,max_nodes,max_depth_limit,algorithm,found,termination_reason,depth,nodes_expanded,nodes_generated,max_frontier,time_ms,max_depth_reached,peak_kib,is_valid
+3,3,1,42,puzzle_3x3_run1_seed42.json,1,8,10000,,Greedy Best-First,True,solved,4,5,86,82,15.542799999821,4,34.4853515625,True
+3,3,1,42,puzzle_3x3_run1_seed42.json,2,8,10000,,Greedy Best-First,True,solved,4,5,86,82,23.037699998894823,4,34.4853515625,True
+3,3,1,42,puzzle_3x3_run1_seed42.json,3,8,10000,,Greedy Best-First,True,solved,4,5,86,82,20.8148000001529,4,34.4853515625,True
+3,3,1,42,puzzle_3x3_run1_seed42.json,4,8,10000,,Greedy Best-First,True,solved,4,5,86,82,21.46309999989171,4,34.4853515625,True
+3,3,1,42,puzzle_3x3_run1_seed42.json,5,8,10000,,Greedy Best-First,True,solved,4,5,86,82,20.569599999362254,4,34.4853515625,True
+3,3,2,123,puzzle_3x3_run2_seed123.json,1,8,10000,,Greedy Best-First,True,solved,6,15,269,255,55.942099999811035,8,93.22265625,True
+3,3,2,123,puzzle_3x3_run2_seed123.json,2,8,10000,,Greedy Best-First,True,solved,6,15,269,255,56.46119999983057,8,93.22265625,True
+3,3,2,123,puzzle_3x3_run2_seed123.json,3,8,10000,,Greedy Best-First,True,solved,6,15,269,255,58.351400000901776,8,93.22265625,True
+3,3,2,123,puzzle_3x3_run2_seed123.json,4,8,10000,,Greedy Best-First,True,solved,6,15,269,255,52.6017000011052,8,93.22265625,True
+3,3,2,123,puzzle_3x3_run2_seed123.json,5,8,10000,,Greedy Best-First,True,solved,6,15,269,255,58.5482000005868,8,93.22265625,True
+3,3,3,999,puzzle_3x3_run3_seed999.json,1,8,10000,,Greedy Best-First,True,solved,5,6,106,101,18.508000001020264,5,40.2783203125,True
+3,3,3,999,puzzle_3x3_run3_seed999.json,2,8,10000,,Greedy Best-First,True,solved,5,6,106,101,21.965300000374555,5,40.2783203125,True
+3,3,3,999,puzzle_3x3_run3_seed999.json,3,8,10000,,Greedy Best-First,True,solved,5,6,106,101,20.327199999883305,5,40.2783203125,True
+3,3,3,999,puzzle_3x3_run3_seed999.json,4,8,10000,,Greedy Best-First,True,solved,5,6,106,101,34.40339999906428,5,40.2783203125,True
+3,3,3,999,puzzle_3x3_run3_seed999.json,5,8,10000,,Greedy Best-First,True,solved,5,6,106,101,21.466899999722955,5,40.2783203125,True
+4,4,1,42,puzzle_4x4_run1_seed42.json,1,15,10000,,Greedy Best-First,True,solved,5,6,211,206,106.32060000170895,5,88.193359375,True
+4,4,1,42,puzzle_4x4_run1_seed42.json,2,15,10000,,Greedy Best-First,True,solved,5,6,211,206,82.88629999879049,5,88.193359375,True
+4,4,1,42,puzzle_4x4_run1_seed42.json,3,15,10000,,Greedy Best-First,True,solved,5,6,211,206,107.90619999897899,5,88.193359375,True
+4,4,1,42,puzzle_4x4_run1_seed42.json,4,15,10000,,Greedy Best-First,True,solved,5,6,211,206,79.17799999995623,5,88.193359375,True
+4,4,1,42,puzzle_4x4_run1_seed42.json,5,15,10000,,Greedy Best-First,True,solved,5,6,211,206,82.02049999999872,5,88.193359375,True
+4,4,2,123,puzzle_4x4_run2_seed123.json,1,15,10000,,Greedy Best-First,True,solved,5,6,211,206,79.71689999976661,5,88.197265625,True
+4,4,2,123,puzzle_4x4_run2_seed123.json,2,15,10000,,Greedy Best-First,True,solved,5,6,211,206,75.43009999972128,5,88.197265625,True
+4,4,2,123,puzzle_4x4_run2_seed123.json,3,15,10000,,Greedy Best-First,True,solved,5,6,211,206,80.16739999948186,5,88.197265625,True
+4,4,2,123,puzzle_4x4_run2_seed123.json,4,15,10000,,Greedy Best-First,True,solved,5,6,211,206,79.8149000002013,5,88.197265625,True
+4,4,2,123,puzzle_4x4_run2_seed123.json,5,15,10000,,Greedy Best-First,True,solved,5,6,211,206,72.06079999923531,5,88.197265625,True
+4,4,3,999,puzzle_4x4_run3_seed999.json,1,15,10000,,Greedy Best-First,True,solved,5,6,211,206,73.2029999999213,5,88.1962890625,True
+4,4,3,999,puzzle_4x4_run3_seed999.json,2,15,10000,,Greedy Best-First,True,solved,5,6,211,206,93.95349999977043,5,88.1962890625,True
+4,4,3,999,puzzle_4x4_run3_seed999.json,3,15,10000,,Greedy Best-First,True,solved,5,6,211,206,79.3485000012879,5,88.1962890625,True
+4,4,3,999,puzzle_4x4_run3_seed999.json,4,15,10000,,Greedy Best-First,True,solved,5,6,211,206,84.1443999997864,5,88.1962890625,True
+4,4,3,999,puzzle_4x4_run3_seed999.json,5,15,10000,,Greedy Best-First,True,solved,5,6,211,206,67.48639999932493,5,88.1962890625,True
+5,5,1,42,puzzle_5x5_run1_seed42.json,1,24,10000,,Greedy Best-First,True,solved,8,9,550,542,310.50890000005893,8,268.6650390625,True
+5,5,1,42,puzzle_5x5_run1_seed42.json,2,24,10000,,Greedy Best-First,True,solved,8,9,550,542,309.6053999997821,8,268.6650390625,True
+5,5,1,42,puzzle_5x5_run1_seed42.json,3,24,10000,,Greedy Best-First,True,solved,8,9,550,542,308.51129999973637,8,268.6650390625,True
+5,5,1,42,puzzle_5x5_run1_seed42.json,4,24,10000,,Greedy Best-First,True,solved,8,9,550,542,281.864399999904,8,268.6650390625,True
+5,5,1,42,puzzle_5x5_run1_seed42.json,5,24,10000,,Greedy Best-First,True,solved,8,9,550,542,311.30880000091565,8,268.6650390625,True
+5,5,2,123,puzzle_5x5_run2_seed123.json,1,24,10000,,Greedy Best-First,True,solved,8,9,550,542,324.97979999970994,8,269.5166015625,True
+5,5,2,123,puzzle_5x5_run2_seed123.json,2,24,10000,,Greedy Best-First,True,solved,8,9,550,542,335.1249999996071,8,269.5166015625,True
+5,5,2,123,puzzle_5x5_run2_seed123.json,3,24,10000,,Greedy Best-First,True,solved,8,9,550,542,320.9790000000794,8,269.5166015625,True
+5,5,2,123,puzzle_5x5_run2_seed123.json,4,24,10000,,Greedy Best-First,True,solved,8,9,550,542,293.68240000076185,8,269.5166015625,True
+5,5,2,123,puzzle_5x5_run2_seed123.json,5,24,10000,,Greedy Best-First,True,solved,8,9,550,542,316.7816999994102,8,269.5166015625,True
+5,5,3,999,puzzle_5x5_run3_seed999.json,1,24,10000,,Greedy Best-First,True,solved,8,9,550,542,312.4539000000368,8,269.5126953125,True
+5,5,3,999,puzzle_5x5_run3_seed999.json,2,24,10000,,Greedy Best-First,True,solved,8,9,550,542,290.1271999999153,8,269.5126953125,True
+5,5,3,999,puzzle_5x5_run3_seed999.json,3,24,10000,,Greedy Best-First,True,solved,8,9,550,542,305.9536999990087,8,269.5126953125,True
+5,5,3,999,puzzle_5x5_run3_seed999.json,4,24,10000,,Greedy Best-First,True,solved,8,9,550,542,314.33970000034606,8,269.5126953125,True
+5,5,3,999,puzzle_5x5_run3_seed999.json,5,24,10000,,Greedy Best-First,True,solved,8,9,550,542,322.86479999856965,8,269.5126953125,True
+6,6,1,42,puzzle_6x6_run1_seed42.json,1,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,1001.2888000001112,12,697.259765625,True
+6,6,1,42,puzzle_6x6_run1_seed42.json,2,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,896.3627000011911,12,697.259765625,True
+6,6,1,42,puzzle_6x6_run1_seed42.json,3,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,937.1039999987261,12,697.259765625,True
+6,6,1,42,puzzle_6x6_run1_seed42.json,4,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,978.6239999993995,12,697.259765625,True
+6,6,1,42,puzzle_6x6_run1_seed42.json,5,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,898.8919000003079,12,697.259765625,True
+6,6,2,123,puzzle_6x6_run2_seed123.json,1,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,895.4267000008258,12,698.146484375,True
+6,6,2,123,puzzle_6x6_run2_seed123.json,2,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,870.9244999990915,12,698.146484375,True
+6,6,2,123,puzzle_6x6_run2_seed123.json,3,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,943.80799999999,12,698.146484375,True
+6,6,2,123,puzzle_6x6_run2_seed123.json,4,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,936.1518000005162,12,698.146484375,True
+6,6,2,123,puzzle_6x6_run2_seed123.json,5,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,923.200999999608,12,698.146484375,True
+6,6,3,999,puzzle_6x6_run3_seed999.json,1,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,917.5735999997414,12,698.1533203125,True
+6,6,3,999,puzzle_6x6_run3_seed999.json,2,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,962.6772999999957,12,698.1533203125,True
+6,6,3,999,puzzle_6x6_run3_seed999.json,3,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,911.3434999999299,12,698.1533203125,True
+6,6,3,999,puzzle_6x6_run3_seed999.json,4,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,905.326199999763,12,698.1533203125,True
+6,6,3,999,puzzle_6x6_run3_seed999.json,5,35,10000,,Greedy Best-First,True,solved,12,13,1218,1206,936.917999999423,12,698.1533203125,True
+7,7,1,42,puzzle_7x7_run1_seed42.json,1,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2292.2455000007176,16,1522.150390625,True
+7,7,1,42,puzzle_7x7_run1_seed42.json,2,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2255.9748999992735,16,1522.150390625,True
+7,7,1,42,puzzle_7x7_run1_seed42.json,3,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2354.7569000002113,16,1522.150390625,True
+7,7,1,42,puzzle_7x7_run1_seed42.json,4,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2306.2995999989653,16,1522.150390625,True
+7,7,1,42,puzzle_7x7_run1_seed42.json,5,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2379.212199999529,16,1522.150390625,True
+7,7,2,123,puzzle_7x7_run2_seed123.json,1,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2309.815799999342,16,1522.154296875,True
+7,7,2,123,puzzle_7x7_run2_seed123.json,2,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2395.682600001237,16,1522.154296875,True
+7,7,2,123,puzzle_7x7_run2_seed123.json,3,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2596.681600000011,16,1522.154296875,True
+7,7,2,123,puzzle_7x7_run2_seed123.json,4,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2572.026399999231,16,1522.154296875,True
+7,7,2,123,puzzle_7x7_run2_seed123.json,5,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2553.7313999993785,16,1522.154296875,True
+7,7,3,999,puzzle_7x7_run3_seed999.json,1,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2603.538800000024,16,1522.150390625,True
+7,7,3,999,puzzle_7x7_run3_seed999.json,2,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2621.250099999088,16,1522.150390625,True
+7,7,3,999,puzzle_7x7_run3_seed999.json,3,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2643.1961999987834,16,1522.150390625,True
+7,7,3,999,puzzle_7x7_run3_seed999.json,4,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2544.904799999131,16,1522.150390625,True
+7,7,3,999,puzzle_7x7_run3_seed999.json,5,48,10000,,Greedy Best-First,True,solved,16,17,2246,2230,2487.37280000023,16,1522.150390625,True

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Protocol, Tuple
 
 from puzzle import PipesPuzzle
+from config import DEFAULT_MAX_NODES, DEFAULT_TRACE_LIMIT
 
 State = Tuple[int, ...]
 ParentMap = Dict[State, Tuple[Optional[State], str]]
@@ -68,6 +69,7 @@ class SearchResult:
     peak_memory_kb: float
     depth: int = 0
     termination_reason: str = "solved"
+    max_depth_reached: int = 0  # Largest depth actually expanded, including the goal.
 
 
 class SearchSolver(Protocol):
@@ -76,14 +78,15 @@ class SearchSolver(Protocol):
     def __call__(
         self,
         puzzle: PipesPuzzle,
-        max_nodes: int = 500_000,
-        max_depth: Optional[int] = None,
+        max_nodes: int = DEFAULT_MAX_NODES,
         callback: Optional[ExpansionCallback] = None,
         start_state: Optional[State] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_check: Optional[CancelCheck] = None,
         trace_callback: Optional[TraceCallback] = None,
-        trace_limit: int = 2_000,
+        trace_limit: int = DEFAULT_TRACE_LIMIT,
+        *,
+        max_depth: Optional[int] = None,
     ) -> SearchResult: ...
 
 
@@ -100,3 +103,18 @@ def reconstruct_path(parents: ParentMap, goal: State, start: Optional[State] = N
     path.reverse()
     actions.reverse()
     return path, actions
+
+
+def validate_solution(puzzle: PipesPuzzle, result: SearchResult, start: Optional[State] = None) -> bool:
+    """Check a reported solution using the model's actual legal transitions."""
+    expected_start = puzzle.initial_state() if start is None else start
+    return (
+        result.found and bool(result.path)
+        and result.path[0] == expected_start
+        and puzzle.is_goal(result.path[-1])
+        and result.depth == len(result.actions) == len(result.path) - 1
+        and all(
+            any(state == after and action == expected for state, action in puzzle.successors(before))
+            for before, after, expected in zip(result.path, result.path[1:], result.actions)
+        )
+    )

@@ -1,210 +1,120 @@
-"""Depth-First Search solver for the Pipes puzzle.
+"""Blind DFS: visit successors in generation order using a LIFO stack.
 
-Uses a stack (LIFO) for graph-search with cycle detection via a visited set.
-Successors are generated from top-left to bottom-right (90° → 180° → 270°)
-and pushed onto the LIFO stack in reverse order.  This ensures that the
-popped order is strictly left-to-right, top-to-bottom, and 90° before 180°
-and 270° (i.e. cell (1, 1) 90° first, then cell (1, 2) 90°, etc.).
-
-The heuristic h(n) is recorded in each trace step for visualisation/display
-purposes only, and is never used to select the next node to expand.
+Children are pushed in reverse order, so the first generated child is visited
+first. Heuristic values are only computed for trace display.
 """
 from __future__ import annotations
 
-import time
-import tracemalloc
-from typing import Dict, Optional
+from typing import Optional
 
+from config import DEFAULT_MAX_NODES, DEFAULT_TRACE_LIMIT
 from puzzle import PipesPuzzle
 from .common import (
-    CancelCheck, ExpansionCallback, FrontierEntry, ParentMap, ProgressCallback,
-    SearchCandidate, SearchResult, SearchTraceStep, State, TraceCallback,
-    reconstruct_path,
+    CancelCheck, ExpansionCallback, ProgressCallback, SearchCandidate,
+    SearchResult, State, TraceCallback,
+)
+from .runtime import (
+    SearchMeasurement, SearchNode, build_result, is_duplicate, record_trace,
+    solved_start, validate_limits,
 )
 
-IMPLEMENTED = True
 IMPLEMENTED = True
 
 
 def depth_first_search(
     puzzle: PipesPuzzle,
-    max_nodes: int = 500_000,
-    max_depth: Optional[int] = None,
+    max_nodes: int = DEFAULT_MAX_NODES,
     callback: Optional[ExpansionCallback] = None,
     start_state: Optional[State] = None,
     progress_callback: Optional[ProgressCallback] = None,
     cancel_check: Optional[CancelCheck] = None,
     trace_callback: Optional[TraceCallback] = None,
-    trace_limit: int = 2_000,
+    trace_limit: int = DEFAULT_TRACE_LIMIT,
+    *,
+    max_depth: Optional[int] = None,
 ) -> SearchResult:
-    """Solve using Blind Depth-First Search (no heuristic guidance).
+    """Search without heuristic guidance, optionally limiting path depth.
 
-    Uses a LIFO stack.  Nodes are expanded in last-in-first-out order.
-    Successors are pushed in reverse so that cell (1, 1) at 90° is popped
-    first, followed by cell (1, 2) at 90°, matching natural reading order.
-
-    Parameters:
-        puzzle: PipesPuzzle instance to solve.
-        max_nodes: Maximum number of states generated before stopping.
-        max_depth: Optional maximum search depth cutoff.
-        callback: Optional legacy expansion callback (state, expanded, frontier_size).
-        start_state: Optional override for the starting board state.
-        progress_callback: Optional UI progress callback.
-        cancel_check: Optional callable returning True to abort search early.
-        trace_callback: Optional callback receiving SearchTraceStep instances.
-        trace_limit: Maximum number of expansion steps to record for UI playback.
+    A shallower path can reopen a state when max_depth is set. Each accepted
+    path receives its own node ID so earlier trace parents remain unchanged.
+    Like GBFS, the node budget stops generation after max_nodes + 1 nodes.
     """
+    validate_limits(max_nodes, max_depth, trace_limit)
     start = start_state if start_state is not None else puzzle.initial_state()
-
-    # Edge case: start state is already a solution.
     if puzzle.is_goal(start):
-        if trace_callback is not None:
-            trace_callback(SearchTraceStep(
-                0, 0, None, start, None, "",
-                puzzle.heuristic(start), 0,
-                1, 0, 1, 1, (), (), True,
-            ))
-        return SearchResult(
-            "Depth-First Search", True, [start], [], 0, 1, 1, 0.0, 0.0, 0
-        )
+        return solved_start("Depth-First Search", puzzle, start, trace_callback)
 
-    tracemalloc.start()
-    started_at = time.perf_counter()
+    with SearchMeasurement() as measurement:
+        root = SearchNode(start)
+        discovered = {start: root}
+        frontier = [root]
+        expanded, generated, max_frontier = 0, 1, 1
+        max_depth_reached = 0
+        goal = None
+        reason = "exhausted"
+        depth_cutoff = False
 
-    parents: ParentMap = {start: (None, "")}
-    depths: Dict[State, int] = {start: 0}
-    visited: set[State] = {start}
-    # node_ids tracks the sequential generation order for trace display.
-    node_ids: Dict[State, int] = {start: 0} if trace_callback is not None else {}
-
-    # Stack entries: (depth, generation_order, state)
-    frontier: list[tuple[int, int, State]] = [(0, 0, start)]
-
-    tie_breaker = 1
-    expanded = 0
-    generated = 1
-    max_frontier = 1
-    goal: Optional[State] = None
-
-    def record_step(
-        state: State,
-        h: int,
-        candidates: list[SearchCandidate],
-        is_goal: bool,
-    ) -> None:
-        """Emit one SearchTraceStep; no-op when trace_callback is None."""
-        if trace_callback is None:
-            return
-        # Preview the top-5 of the stack (last 5 elements = next to pop).
-        preview: list[FrontierEntry] = []
-        for i in range(max(0, len(frontier) - 5), len(frontier)):
-            d_i, order_i, queued_state = frontier[i]
-            preview.append(FrontierEntry(order_i, parents[queued_state][1], 0, d_i))
-        preview.reverse()  # first entry is the very next node to expand
-        parent, action = parents[state]
-        trace_callback(SearchTraceStep(
-            expanded,
-            node_ids[state],
-            node_ids[parent] if parent is not None else None,
-            state,
-            parent,
-            action,
-            h,
-            depths[state],
-            frontier_before,
-            len(frontier),
-            generated,
-            max_frontier,
-            tuple(candidates),
-            tuple(preview),
-            is_goal,
-        ))
-
-    while frontier and generated <= max_nodes and not (cancel_check and cancel_check()):
-        frontier_before = len(frontier)
-        depth, _, state = frontier.pop()   # LIFO: take from the top of the stack
-        expanded += 1
-
-        if callback is not None:
-            callback(state, expanded, len(frontier))
-        if progress_callback is not None:
-            progress_callback(state, expanded, generated, len(frontier))
-
-        # Only compute h when the trace is being recorded (expensive call).
-        capture = trace_callback is not None and expanded <= trace_limit
-        h = puzzle.heuristic(state) if capture else 0
-
-        if puzzle.is_goal(state):
-            goal = state
-            record_step(state, h, [], True)
-            break
-
-        # Giới hạn độ sâu cắt tỉa
-        if max_depth is not None and depth >= max_depth:
-            if capture:
-                record_step(state, h, [], False)
-            continue
-
-        candidates: list[SearchCandidate] = []
-        to_push: list[tuple[int, int, State]] = []
-
-        # puzzle.successors sinh từ trái sang phải, từ trên xuống dưới, 90° -> 180° -> 270°
-        for successor, action in puzzle.successors(state):
+        while frontier:
             if cancel_check is not None and cancel_check():
+                reason = "cancelled"
                 break
-            if successor in visited:
-                if capture:
-                    candidates.append(
-                        SearchCandidate(action, None, True, node_ids.get(successor, -1))
-                    )
-                continue
-
-            visited.add(successor)
-            parents[successor] = (state, action)
-            depths[successor] = depth + 1
-            generated += 1
-            if trace_callback is not None:
-                node_ids[successor] = tie_breaker
-            successor_h = puzzle.heuristic(successor) if capture else None
-            if capture:
-                candidates.append(
-                    SearchCandidate(action, successor_h, False, tie_breaker)
-                )
-            to_push.append((depth + 1, tie_breaker, successor))
-            tie_breaker += 1
-
             if generated > max_nodes:
+                reason = "node_limit"
                 break
+            frontier_before = len(frontier)
+            node = frontier.pop()
+            if discovered[node.state] is not node:
+                continue  # A shallower path replaced this queued entry.
+            expanded += 1
+            max_depth_reached = max(max_depth_reached, node.depth)
+            if callback is not None:
+                callback(node.state, expanded, len(frontier))
+            if progress_callback is not None:
+                progress_callback(node.state, expanded, generated, len(frontier))
 
-        # Đẩy vào ngăn xếp LIFO theo thứ tự ngược lại (đẩy (3, 3) 270° trước, (1, 1) 90° sau cùng)
-        # để khi pop() từ đỉnh stack, ô (1, 1) xoay 90° sẽ được lấy ra duyệt đầu tiên.
-        for item in reversed(to_push):
-            frontier.append(item)
+            is_goal = puzzle.is_goal(node.state)
+            capture = trace_callback is not None and (expanded <= trace_limit or is_goal)
+            candidates = []
+            children = []
+            if is_goal:
+                goal, reason = node, "solved"
+            elif max_depth is not None and node.depth >= max_depth:
+                depth_cutoff = True
+            else:
+                for state, action in puzzle.successors(node.state):
+                    if cancel_check is not None and cancel_check():
+                        reason = "cancelled"
+                        break
+                    previous = discovered.get(state)
+                    if is_duplicate(previous, node.depth + 1, max_depth):
+                        if capture:
+                            candidates.append(SearchCandidate(action, None, True, previous.node_id))
+                        continue
+                    child = SearchNode(state, node, action, node.depth + 1, generated)
+                    discovered[state] = child
+                    generated += 1
+                    children.append(child)
+                    if capture:
+                        candidates.append(SearchCandidate(action, puzzle.heuristic(state), False, child.node_id))
+                    if generated > max_nodes:
+                        reason = "node_limit"
+                        break
+                frontier.extend(reversed(children))
+            max_frontier = max(max_frontier, len(frontier))
+            if capture:
+                record_trace(
+                    puzzle, trace_callback, node, expanded=expanded, generated=generated,
+                    max_frontier=max_frontier, frontier_before=frontier_before,
+                    frontier_after=len(frontier), candidates=candidates,
+                    preview=((queued, puzzle.heuristic(queued.state)) for queued in reversed(frontier[-5:])),
+                    is_goal=is_goal,
+                )
+            if progress_callback is not None:
+                progress_callback(node.state, expanded, generated, len(frontier))
+            if reason in ("solved", "cancelled", "node_limit"):
+                break
+        if reason == "exhausted" and depth_cutoff:
+            reason = "depth_limit"
 
-        max_frontier = max(max_frontier, len(frontier))
-        if capture:
-            record_step(state, h, candidates, False)
-        if progress_callback is not None:
-            progress_callback(state, expanded, generated, len(frontier))
-
-    elapsed = time.perf_counter() - started_at
-    _, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-
-    if goal is None:
-        if cancel_check and cancel_check():
-            reason = "cancelled"
-        elif generated > max_nodes:
-            reason = "node_limit"
-        else:
-            reason = "exhausted"
-        return SearchResult(
-            "Depth-First Search", False, [], [], expanded, generated,
-            max_frontier, elapsed, peak / 1024, -1, reason,
-        )
-
-    path, actions = reconstruct_path(parents, goal)
-    return SearchResult(
-        "Depth-First Search", True, path, actions, expanded, generated,
-        max_frontier, elapsed, peak / 1024, len(path) - 1,
-    )
+    return build_result("Depth-First Search", goal, expanded, generated, max_frontier,
+                        measurement, reason, max_depth_reached)

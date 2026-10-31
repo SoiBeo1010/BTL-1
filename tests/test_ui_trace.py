@@ -10,8 +10,9 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame
 
 from generator import make_random_puzzle
+from config import default_max_depth
 from main import App, BOARD_MARGIN, BOARD_W, CARD_H, GRID_AREA_BOTTOM, PUZZLE_SIZES
-from search import ALGORITHMS, SearchAlgorithm, greedy_best_first
+from search import ALGORITHMS, SearchAlgorithm, SearchResult, greedy_best_first
 
 
 class TraceUITests(unittest.TestCase):
@@ -166,6 +167,7 @@ class TraceUITests(unittest.TestCase):
             self.finish_worker()
             solver.assert_called_once()
             self.assertEqual(solver.call_args.kwargs["start_state"], start)
+            self.assertIsNone(solver.call_args.kwargs["max_depth"])
             self.assertTrue(app.search_result.found)
             app.draw()
             app.select_step(len(app.trace_steps) - 1)
@@ -188,6 +190,11 @@ class TraceUITests(unittest.TestCase):
         self.assertEqual(app.algorithm.key, "greedy")
         self.assertIs(app.search_result, result)
         pending.solver.assert_not_called()
+
+    def test_depth_cutoff_does_not_claim_no_solution(self):
+        self.app._finish_search(SearchResult("Depth-First Search", False, [], [], 1, 1, 1,
+                                             0.0, 0.0, -1, "depth_limit"))
+        self.assertEqual(self.app.status, "CHẠM GIỚI HẠN")
 
 
 if __name__ == "__main__":

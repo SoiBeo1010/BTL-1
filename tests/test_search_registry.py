@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import benchmark
 from generator import make_random_puzzle
-from search import ALGORITHMS, SearchAlgorithm, depth_first_search, get_algorithm, greedy_best_first
+from search import ALGORITHMS, SearchAlgorithm, get_algorithm, greedy_best_first
 
 
 class SearchRegistryTests(unittest.TestCase):
@@ -31,14 +31,6 @@ class SearchRegistryTests(unittest.TestCase):
             with self.assertRaises(NotImplementedError):
                 get_algorithm("pending").solver(self.puzzle)
         solver.assert_not_called()
-
-    def test_dfs_placeholder_does_not_silently_run_greedy(self):
-        if ALGORITHMS["dfs"].available:
-            self.skipTest("DFS has been implemented")
-        with self.assertRaises(NotImplementedError):
-            get_algorithm("dfs")
-        with self.assertRaises(NotImplementedError):
-            depth_first_search(self.puzzle)
 
     def test_unknown_algorithm_has_a_clear_error(self):
         with self.assertRaisesRegex(ValueError, "missing"):

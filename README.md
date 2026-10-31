@@ -1,22 +1,25 @@
-# Pipes Puzzle — Greedy và khung tích hợp DFS
+# Pipes Puzzle — DFS và Greedy Best-First Search
 
-Demo trực quan bằng Pygame cho bài toán xoay các ống để tạo thành mạng kết nối hợp lệ. **Greedy Best-First Search** đã hoạt động, với frontier ưu tiên trạng thái có heuristic `h(n)` nhỏ nhất. **Depth-First Search (DFS)** có module và giao diện tích hợp sẵn để một thành viên khác triển khai.
+Demo trực quan bằng Pygame cho bài toán xoay các ống để tạo thành mạng kết nối hợp lệ. **Greedy Best-First Search** ưu tiên trạng thái có heuristic `h(n)` nhỏ nhất. **Depth-First Search (DFS)** dùng ngăn xếp LIFO và không dùng heuristic để chọn nhánh. Cả hai dùng chung kiểu kết quả, trace, đo thời gian/bộ nhớ và registry.
 
 ## Cấu trúc
 
 ```text
 pipes_project/
 ├── puzzle.py          # Mô hình trạng thái, successor, goal test và heuristic
+├── config.py          # Danh sách puzzle và giới hạn dùng chung
 ├── search/
 │   ├── __init__.py    # API công khai; giữ tương thích import cũ
 │   ├── common.py      # State, SearchResult, trace, callback, dựng lại lời giải
 │   ├── greedy.py      # Thuật toán Greedy Best-First hiện có
-│   ├── dfs.py         # Khung hàm DFS dành cho thành viên phụ trách
+│   ├── dfs.py         # Blind DFS, thăm successor theo thứ tự sinh
+│   ├── runtime.py     # Node, trace, đo thời gian/bộ nhớ và dựng kết quả
 │   └── registry.py    # Danh sách thuật toán dùng chung cho UI và benchmark
 ├── generator.py       # Sinh puzzle ngẫu nhiên có lời giải
 ├── main.py            # Giao diện Pygame, phát lại tìm kiếm và lời giải
 ├── benchmark.py       # Đo thuật toán đã chọn trên 5 puzzle
-├── docs/adding_dfs.md # Hướng dẫn triển khai, kiểm thử và ghép DFS
+├── experiments.py     # Sinh input, chạy subprocess và tổng hợp thực nghiệm
+├── docs/adding_dfs.md # Hợp đồng solver, quy tắc DFS và trace
 ├── puzzles/           # Puzzle mẫu 3x3, 4x4, 5x5, 6x6 và 7x7
 ├── tests/             # Kiểm tra thuật toán và điều khiển UI
 ├── report/            # Báo cáo cục bộ, được loại khỏi Git
@@ -37,13 +40,31 @@ Chạy benchmark:
 ```powershell
 python benchmark.py
 python benchmark.py --algorithm greedy --output greedy_results.csv
+python benchmark.py --algorithm dfs --max-nodes 10000 --max-depth 14 --output dfs_results.csv
 ```
 
-CSV có cột `algorithm` để phân biệt kết quả khi so sánh thuật toán. Có thể giới hạn tìm kiếm bằng `--max-nodes`.
+Các lệnh trên đo nhóm JSON trong `puzzles/`; CSV có cột `algorithm` và `termination_reason`. Giới hạn độ sâu chỉ áp dụng khi truyền `--max-depth`.
 
-## Bổ sung DFS và làm việc nhóm
+Thực nghiệm trên puzzle Sparse sinh bằng các seed cố định, cùng input cho cả hai thuật toán, mỗi lượt trong một tiến trình mới:
 
-Thành viên phụ trách triển khai `depth_first_search()` trong [search/dfs.py](search/dfs.py) theo hợp đồng dùng chung và hướng dẫn tại [docs/adding_dfs.md](docs/adding_dfs.md), sau đó đổi `IMPLEMENTED = True`. Khi khởi động lại, nút DFS trên UI tự được bật và benchmark nhận `--algorithm dfs`. Hiện DFS hiển thị “sắp có” và chưa thể chạy.
+```powershell
+python benchmark.py --experiment
+python benchmark.py --experiment --sizes 3 4 --seeds 42 123 999 --max-nodes 10000
+```
+
+Mặc định thực nghiệm dùng seed 42, 123, 999 trên các cỡ 3×3–7×7; `--algorithm dfs` hoặc `--algorithm greedy` chọn một solver. JSON được lưu trong `experiment_puzzles/`, CSV mới trong `experiment_results/`; có thể đổi bằng `--puzzle-dir` và `--output-dir`. DFS mặc định giới hạn độ sâu ở `ceil(1.5 * rows * cols)`; Greedy mặc định dùng `max_depth=None`. `--max-depth` đặt giới hạn cụ thể khi cần. CLI và worker đều dùng registry.
+
+CSV tổng hợp ghi số lượt yêu cầu, thành công và lỗi riêng. Độ sâu chỉ tổng hợp các lượt có nghiệm; dấu `*` chỉ một phần số lượt tìm được nghiệm. Lỗi worker vẫn có dòng trong CSV chi tiết, kể cả khi tất cả lượt đều lỗi. Dữ liệu DFS đang lưu thuộc đợt đo trước refactor. GBFS đã được đo lại trên 15 JSON có sẵn, mỗi JSON năm lần trong tiến trình mới, tổng cộng 75 lượt; số liệu chi tiết và hash đầu vào/mã nguồn nằm trong `experiment_results/benchmark_greedy_measurements.json`. Đợt đo GBFS này dùng `max_nodes=10000`, `max_depth=None`; các chỉ số tìm kiếm tổng hợp trên ba input mỗi kích thước, thời gian/bộ nhớ trên 15 lượt đo mỗi kích thước.
+
+## Quy tắc tìm kiếm dùng chung
+
+DFS và Greedy đều hoạt động trên UI và benchmark. Chữ ký solver được mô tả trong `search/common.py`; `max_depth` là tham số chỉ truyền bằng tên. Hướng dẫn chi tiết nằm ở [docs/adding_dfs.md](docs/adding_dfs.md).
+
+DFS đẩy danh sách con theo thứ tự ngược, nên successor được sinh đầu tiên sẽ được xét trước. Với giới hạn độ sâu, cả hai solver cho phép xét lại trạng thái khi tìm được đường ngắn hơn để không bỏ sót nhánh còn đủ độ sâu. Mỗi đường được chấp nhận có node ID và cha riêng; `nodes_generated` tính cả các lần mở lại này, trạng thái đầu và giữ quy ước dừng khi vượt `max_nodes` một node.
+
+Kết quả dừng phân biệt `solved`, `cancelled`, `node_limit`, `depth_limit` và `exhausted`. UI dùng cùng công thức giới hạn độ sâu với thực nghiệm; chạm giới hạn không được hiển thị như đã chứng minh vô nghiệm.
+
+`max_depth` là giới hạn tùy chọn đặt trước; `SearchResult.max_depth_reached` là độ sâu lớn nhất của node thực sự được lấy ra xét, gồm đích, đo được cả khi `max_depth=None`. Chỉ số này khác độ sâu lời giải: Greedy có thể xét một nhánh sâu rồi trả về nghiệm trên đường ngắn hơn. CSV dùng cột `Max depth reached` hoặc `max_depth_reached` để phân biệt hai ý nghĩa.
 
 UI gọi thuật toán qua `run_search()`, benchmark lấy solver từ `search/registry.py`. Greedy và DFS dùng chung `SearchResult`, callback tiến độ, hủy và bản ghi tìm kiếm nên thành viên làm DFS có thể tập trung vào module riêng. Các import cũ như `from search import greedy_best_first` vẫn dùng được.
 
@@ -73,7 +94,7 @@ Trong giao diện, các đầu nối khớp tạo thành đường ống xanh ng
 
 Nhấn **Chạy AI** (`G`), sau đó dùng **Lùi / Tiến**, **Phát**, hoặc kéo thanh tiến trình. Nút tốc độ chuyển giữa `0.5x`, `1x`, `2x` và `5x`. Chọn tab để xem:
 
-- **Quá trình tìm kiếm**: mỗi bản ghi tương ứng một trạng thái thực sự được lấy khỏi frontier. UI hiển thị node, trạng thái cha, phép xoay từ cha, độ sâu, cách tính `h(n)`, các nhánh mới/trùng và tối đa 5 node sẽ được xét tiếp. Cuộn trong bảng phép xoay để xem hết các nhánh. Với Greedy, bảng xếp theo `h(n)`; thuật toán ưu tiên `h(n)` nhỏ nhất, sau đó độ sâu nhỏ hơn và thứ tự thêm vào hàng đợi. Khi DFS được triển khai, bảng giữ thứ tự sinh nhánh và hiển thị ngăn xếp LIFO; heuristic chỉ là thông tin tham khảo. `Δh` là điểm của nhánh con trừ điểm của node đang xét.
+- **Quá trình tìm kiếm**: mỗi bản ghi tương ứng một trạng thái thực sự được lấy khỏi frontier. UI hiển thị node, trạng thái cha, phép xoay từ cha, độ sâu, cách tính `h(n)`, các nhánh mới/trùng và tối đa 5 node sẽ được xét tiếp. Cuộn trong bảng phép xoay để xem hết các nhánh. Với Greedy, bảng xếp theo `h(n)`; thuật toán ưu tiên `h(n)` nhỏ nhất, sau đó độ sâu nhỏ hơn và thứ tự thêm vào hàng đợi. Với DFS, bảng giữ thứ tự sinh nhánh và hiển thị ngăn xếp LIFO; heuristic chỉ là thông tin tham khảo. `Δh` là điểm của nhánh con trừ điểm của node đang xét.
 - **Đường đi lời giải**: các phép xoay được truy ngược từ đích về trạng thái ban đầu. Click một dòng để đến bước đó. Đây là đường đi AI tìm được, có thể bỏ qua nhiều nhánh đã xét trong quá trình tìm kiếm.
 
 Khi hai node được mở rộng liên tiếp thuộc hai nhánh khác nhau, viền vàng vẫn thể hiện phép xoay từ **cha thực sự** của node đang xem. Các chỉ số “Tại bước này” lấy từ bản ghi tương ứng; dòng “Tổng” là kết quả của toàn bộ lần chạy, không nội suy theo hoạt ảnh.
